@@ -277,10 +277,12 @@ class Game(GObject.Object):
 
     def async_execute(self, coroutine):
         """Cause a coroutine to execute, but handle any errors from it with signal_errors()."""
+
         def on_done(completed):
             error = completed.exception()
             if error:
                 self.signal_error(error)
+
         future = asyncio.ensure_future(coroutine)
         future.add_done_callback(on_done)
 
@@ -634,6 +636,7 @@ class Game(GObject.Object):
         """Get the game ready to start, applying all the options.
         This method sets the game_runtime_config attribute.
         """
+
         gameplay_info = self.get_gameplay_info(launch_ui_delegate)
         if not gameplay_info:  # if user cancelled- not an error
             return False
@@ -700,7 +703,7 @@ class Game(GObject.Object):
         """Request launching a game. The game may not be installed yet."""
         if not self.check_launchable():
             logger.error("Game is not launchable")
-        elif launch_ui_delegate.check_game_launchable(self):
+        elif await launch_ui_delegate.check_game_launchable_async(self):
             self.reload_config()  # Reload the config before launching it.
 
             if self.id in LOG_BUFFERS:  # Reset game logs on each launch

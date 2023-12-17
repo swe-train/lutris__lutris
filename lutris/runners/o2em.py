@@ -97,15 +97,11 @@ class o2em(Runner):
                     return self.platforms[i]
         return ""
 
-    def install(self, install_ui_delegate, version=None, callback=None):
+    async def install_runner_async(self, install_ui_delegate, version=None):
+        await super().install_runner_async(install_ui_delegate, version)
 
-        def on_runner_installed(*args):
-            if not system.path_exists(self.bios_path):
-                os.makedirs(self.bios_path)
-            if callback:
-                callback()
-
-        super().install(install_ui_delegate, version, on_runner_installed)
+        if not system.path_exists(self.bios_path):
+            os.makedirs(self.bios_path)
 
     def play(self):
         arguments = ["-biosdir=%s" % self.bios_path]

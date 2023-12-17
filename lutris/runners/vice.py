@@ -32,12 +32,9 @@ class vice(Runner):
     ]
     game_options = [
         {
-            "option":
-            "main_file",
-            "type":
-            "file",
-            "label":
-            _("ROM file"),
+            "option": "main_file",
+            "type": "file",
+            "label": _("ROM file"),
             "help": _(
                 "The game data, commonly called a ROM image.\n"
                 "Supported formats: X64, D64, G64, P64, D67, D71, D81, "
@@ -125,21 +122,17 @@ class vice(Runner):
         except KeyError as ex:
             raise MisconfigurationError("Invalid machine '%s'" % machine) from ex
 
-    def install(self, install_ui_delegate, version=None, callback=None):
+    async def install_runner_async(self, install_ui_delegate, version=None):
+        await super().install_runner_async(install_ui_delegate, version)
 
-        def on_runner_installed(*args):
-            config_path = system.create_folder("~/.vice")
-            lib_dir = os.path.join(settings.RUNNER_DIR, "vice/lib/vice")
-            if not system.path_exists(lib_dir):
-                lib_dir = os.path.join(settings.RUNNER_DIR, "vice/lib64/vice")
-            if not system.path_exists(lib_dir):
-                logger.error("Missing lib folder in the Vice runner")
-            else:
-                system.merge_folders(lib_dir, config_path)
-            if callback:
-                callback()
-
-        super().install(install_ui_delegate, version, on_runner_installed)
+        config_path = system.create_folder("~/.vice")
+        lib_dir = os.path.join(settings.RUNNER_DIR, "vice/lib/vice")
+        if not system.path_exists(lib_dir):
+            lib_dir = os.path.join(settings.RUNNER_DIR, "vice/lib64/vice")
+        if not system.path_exists(lib_dir):
+            logger.error("Missing lib folder in the Vice runner")
+        else:
+            system.merge_folders(lib_dir, config_path)
 
     def get_roms_path(self, machine=None):
         if not machine:

@@ -22,7 +22,7 @@ class LaunchUIDelegate:
     the launch() method, where no delegate is available.
     """
 
-    def check_game_launchable(self, game):
+    async def check_game_launchable_async(self, game):
         """See if the game can be launched. If there are adverse conditions,
         this can warn the user and ask whether to launch. If this returs
         False, the launch is cancelled. The default is to return True with no
@@ -133,9 +133,9 @@ class DialogInstallUIDelegate(InstallUIDelegate):
 class DialogLaunchUIDelegate(LaunchUIDelegate):
     """This provides UI for game launch via dialogs."""
 
-    def check_game_launchable(self, game):
+    async def check_game_launchable_async(self, game):
         if not game.runner.is_installed():
-            installed = game.runner.install_dialog(self)
+            installed = await game.runner.install_dialog_async(self)
             if not installed:
                 return False
 
