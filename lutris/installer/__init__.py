@@ -5,6 +5,7 @@ import yaml
 
 from lutris.api import get_game_installers, normalize_installer
 from lutris.util import system
+from lutris.util.jobs import async_call
 from lutris.util.log import logger
 
 AUTO_EXE_PREFIX = "_xXx_AUTO_"
@@ -35,3 +36,7 @@ def get_installers(game_slug=None, installer_file=None, revision=None):
     if system.path_exists(installer_file):
         return [normalize_installer(i) for i in read_script(installer_file)]
     return get_game_installers(game_slug=game_slug, revision=revision)
+
+
+def get_installers_async(game_slug=None, installer_file=None, revision=None):
+    return async_call(get_installers, game_slug, installer_file, revision)

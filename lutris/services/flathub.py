@@ -14,6 +14,7 @@ from lutris.services.base import BaseService
 from lutris.services.service_game import ServiceGame
 from lutris.services.service_media import ServiceMedia
 from lutris.util import system
+from lutris.util.jobs import async_call
 from lutris.util.log import logger
 from lutris.util.strings import slugify
 
@@ -102,7 +103,7 @@ class FlathubService(BaseService):
             game.save()
         return flathub_games
 
-    def install(self, db_game):
+    async def install_game_async(self, db_game):
         """Install a Flathub game"""
         app_id = db_game["appid"]
         logger.debug("Installing %s from service %s", app_id, self.id)
@@ -111,7 +112,7 @@ class FlathubService(BaseService):
             logger.error("Flathub is not configured on the system. Visit https://flatpak.org/setup/ for instructions.")
             return
         # Install the game
-        service_installers = self.get_installers_from_api(app_id)
+        service_installers = await async_call(self.get_installers_from_api, app_id)
         if not service_installers:
             service_installers = [self.generate_installer(db_game)]
         application = Gio.Application.get_default()
@@ -182,12 +183,12 @@ class FlathubService(BaseService):
                 "installer": [
                     {
                         "execute":
-                        {
-                            "file": flatpak_cmd[0],
-                            "args": " ".join(flatpak_cmd[1:]) + f" install --app --noninteractive flathub "
-                                    f"app/{db_game['appid']}/{self.arch}/{self.branch}",
-                            "disable_runtime": True
-                        }
+                            {
+                                "file": flatpak_cmd[0],
+                                "args": " ".join(flatpak_cmd[1:]) + f" install --app --noninteractive flathub "
+                                                                    f"app/{db_game['appid']}/{self.arch}/{self.branch}",
+                                "disable_runtime": True
+                            }
                     }
                 ]
             }

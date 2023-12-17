@@ -6,7 +6,7 @@ from gettext import gettext as _
 from gi.repository import Gio
 
 from lutris import settings
-from lutris.api import get_api_games, get_game_installers, read_api_key
+from lutris.api import get_api_games, get_game_installers_async, read_api_key
 from lutris.database.games import get_games
 from lutris.database.services import ServiceGameCollection
 from lutris.gui import dialogs
@@ -115,12 +115,12 @@ class LutrisService(OnlineService):
     def get_installed_slug(self, db_game):
         return db_game["slug"]
 
-    def install(self, db_game):
+    async def install_game_async(self, db_game):
         if isinstance(db_game, dict):
             slug = db_game["slug"]
         else:
             slug = db_game
-        installers = get_game_installers(slug)
+        installers = await get_game_installers_async(slug)
         if not installers:
             raise RuntimeError(_("Lutris has no installers for %s. Try using a different service instead.") % slug)
         application = Gio.Application.get_default()

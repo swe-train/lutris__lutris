@@ -13,10 +13,10 @@ from gi.repository import Gio
 
 from lutris import settings
 from lutris.config import LutrisConfig, write_game_config
-from lutris.database.games import add_game, get_game_by_field
+from lutris.database.games import add_game, get_game_by_field, get_game_by_field_async
 from lutris.database.services import ServiceGameCollection
 from lutris.game import Game
-from lutris.installer import get_installers
+from lutris.installer import get_installers_async
 from lutris.services.base import OnlineService
 from lutris.services.service_game import ServiceGame
 from lutris.services.service_media import ServiceMedia
@@ -373,12 +373,12 @@ class OriginService(OnlineService):
     def get_installed_runner_name(self, db_game):
         return self.runner
 
-    def install(self, db_game):
-        origin_game = get_game_by_field(self.client_installer, "slug")
+    async def install_game_async(self, db_game):
+        origin_game = await get_game_by_field_async(self.client_installer, "slug")
         application = Gio.Application.get_default()
         if not origin_game or not origin_game["installed"]:
             logger.warning("Installing the Origin client")
-            installers = get_installers(game_slug=self.client_installer)
+            installers = await get_installers_async(game_slug=self.client_installer)
             application.show_installer_window(installers)
         else:
             application.show_installer_window(

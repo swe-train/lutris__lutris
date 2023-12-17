@@ -4,6 +4,7 @@ from itertools import chain
 
 from lutris import settings
 from lutris.database import sql
+from lutris.util.jobs import async_call
 from lutris.util.log import logger
 from lutris.util.strings import slugify
 
@@ -125,6 +126,10 @@ def get_game_by_field(value, field="slug"):
     if game_result:
         return game_result[0]
     return {}
+
+
+def get_game_by_field_async(value, field="slug"):
+    return async_call(get_game_by_field, field)
 
 
 def get_games_by_runner(runner):

@@ -15,6 +15,7 @@ from lutris.installer.installer_file import InstallerFile
 from lutris.services.base import BaseService
 from lutris.services.service_game import ServiceGame
 from lutris.services.service_media import ServiceMedia
+from lutris.util.jobs import async_call
 from lutris.util.log import logger
 from lutris.util.steam.appmanifest import AppManifest, get_appmanifests
 from lutris.util.steam.config import get_active_steamid64, get_steam_library, get_steamapps_dirs
@@ -216,16 +217,16 @@ class SteamService(BaseService):
     def get_installed_runner_name(self, db_game):
         return self.runner
 
-    def install(self, db_game):
+    async def install_game_async(self, db_game):
         appid = db_game["appid"]
         db_games = get_games(filters={"service_id": appid, "installed": "1", "service": self.id})
-        existing_game = self.match_existing_game(db_games, appid)
+        existing_game = await async_call(self.match_existing_game, db_games, appid)
         if existing_game:
             logger.debug("Found steam game: %s", existing_game)
             game = Game(existing_game.id)
             game.save()
             return
-        service_installers = self.get_installers_from_api(appid)
+        service_installers = await async_call(self.get_installers_from_api, appid)
         if not service_installers:
             service_installers = [self.generate_installer(db_game)]
         application = Gio.Application.get_default()

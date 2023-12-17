@@ -9,10 +9,10 @@ from gi.repository import Gio
 
 from lutris import settings
 from lutris.config import LutrisConfig, write_game_config
-from lutris.database.games import add_game, get_game_by_field, update_existing
+from lutris.database.games import add_game, get_game_by_field, get_game_by_field_async, update_existing
 from lutris.database.services import ServiceGameCollection
 from lutris.game import Game
-from lutris.installer import get_installers
+from lutris.installer import get_installers_async
 from lutris.services.base import OnlineService
 from lutris.services.service_game import ServiceGame
 from lutris.services.service_media import ServiceMedia
@@ -270,13 +270,13 @@ class UbisoftConnectService(OnlineService):
     def get_installed_runner_name(self, db_game):
         return self.runner
 
-    def install(self, db_game):
+    async def install_game_async(self, db_game):
         """Install a game or Ubisoft Connect if not already installed"""
-        ubisoft_connect = get_game_by_field(self.client_installer, "slug")
+        ubisoft_connect = await get_game_by_field_async(self.client_installer, "slug")
         application = Gio.Application.get_default()
         if not ubisoft_connect or not ubisoft_connect["installed"]:
             logger.warning("Ubisoft Connect (%s) not installed", self.client_installer)
-            installers = get_installers(game_slug=self.client_installer)
+            installers = await get_installers_async(game_slug=self.client_installer)
             application.show_installer_window(installers)
         else:
             application.show_installer_window(

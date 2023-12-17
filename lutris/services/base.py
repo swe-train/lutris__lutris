@@ -12,7 +12,7 @@ from lutris.database import sql
 from lutris.database.games import add_game, get_game_by_field, get_games
 from lutris.database.services import ServiceGameCollection
 from lutris.game import Game
-from lutris.gui.dialogs import NoticeDialog
+from lutris.gui.dialogs import NoticeDialog, execute_async
 from lutris.gui.dialogs.webconnect_dialog import DEFAULT_USER_AGENT, WebConnectDialog
 from lutris.gui.views.media_loader import download_media
 from lutris.gui.widgets.utils import BANNER_SIZE, ICON_SIZE
@@ -20,7 +20,7 @@ from lutris.installer import get_installers
 from lutris.services.service_media import ServiceMedia
 from lutris.util import system
 from lutris.util.cookies import WebkitCookieJar
-from lutris.util.jobs import AsyncCall
+from lutris.util.jobs import AsyncCall, async_call
 from lutris.util.log import logger
 from lutris.util.strings import slugify
 
@@ -131,6 +131,7 @@ class BaseService(GObject.Object):
         """Refresh the service's games, asynchronously. This raises signals, but
         does so on the main thread- and runs the reload on a worker thread. It calls
         reloaded_callback when done, passing any error (or None on success)"""
+
         def do_reload():
             if self.is_loading:
                 logger.warning("'%s' games are already loading", self.name)
@@ -282,30 +283,33 @@ class BaseService(GObject.Object):
             service_installers.append(installer)
         if not service_installers:
             logger.error("No installer found for %s", db_game)
-            return
-        return service_installers, db_game
+            return []
+        return service_installers
 
     def install(self, db_game, update=False):
         """Install a service game, or starts the installer of the game.
 
         Args:
-            db_game (dict or str): Database fields of the game to add, or (for Lutris service only
-                the slug of the game.)
+           db_game (dict or str): Database fields of the game to add, or (for Lutris service only
+                                  the slug of the game.)
 
         Returns:
-            str: The slug of the game that was installed, to be run. None if the game should not be
+           str: The slug of the game that was installed, to be run. None if the game should not be
                 run now. Many installers start from here, but continue running after this returns;
                 they return None.
         """
+        execute_async(self.install_game_async(db_game, update=update))
+
+    async def install_game_async(self, db_game, update=False):
+        """A version of install() that is asynchronous; by efault install() calls this."""
         logger.debug("Installing %s from service %s", db_game["appid"], self.id)
+
         # Local services (aka game libraries that don't require any type of online interaction) can
         # be added without going through an install dialog.
         if self.local:
             return self.simple_install(db_game)
-        AsyncCall(self.get_service_installers, self.on_service_installers_loaded, db_game, update)
 
-    def on_service_installers_loaded(self, result, _error):
-        service_installers, db_game = result
+        service_installers = await async_call(self.get_service_installers, db_game, update=update)
         application = Gio.Application.get_default()
         application.show_installer_window(service_installers, service=self, appid=db_game["appid"])
 
