@@ -161,9 +161,10 @@ class libretro(Runner):
     async def install_runner_async(self, install_ui_delegate, version=None):
         # install libretro core if it's missing
         if version and not super().is_installed():
-            await super().install_runner_async(install_ui_delegate, version=None)
+            if not await super().install_runner_async(install_ui_delegate, version=None):
+                return False
 
-        await super().install_runner_async(install_ui_delegate, version)
+        return await super().install_runner_async(install_ui_delegate, version)
 
     def get_run_data(self):
         return {

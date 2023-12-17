@@ -231,8 +231,11 @@ class mame(Runner):  # pylint: disable=invalid-name
         return self._platforms
 
     async def install_runner_async(self, install_ui_delegate, version=None):
-        await super().install_runner_async(install_ui_delegate, version=version)
+        if not await super().install_runner_async(install_ui_delegate, version=version):
+            return False
+
         AsyncCall(write_mame_xml, notify_mame_xml)
+        return True
 
     @property
     def default_path(self):

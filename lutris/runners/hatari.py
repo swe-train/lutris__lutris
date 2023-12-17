@@ -118,7 +118,8 @@ class hatari(Runner):
     ]
 
     async def install_runner_async(self, install_ui_delegate, version=None):
-        await super().install_runner_async(install_ui_delegate, version=version)
+        if not await super().install_runner_async(install_ui_delegate, version=version):
+            return False
 
         bios_path = system.create_folder("~/.hatari/bios")
 
@@ -133,6 +134,7 @@ class hatari(Runner):
             config = LutrisConfig(runner_slug="hatari")
             config.raw_runner_config.update({"bios_file": bios_path})
             config.save()
+        return True
 
     def play(self):  # pylint: disable=too-many-branches
         params = self.get_command()

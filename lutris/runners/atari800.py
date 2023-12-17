@@ -84,7 +84,8 @@ class atari800(Runner):
     ]
 
     async def install_runner_async(self, install_ui_delegate, version=None):
-        await super().install_runner_async(install_ui_delegate, version)
+        if not await super().install_runner_async(install_ui_delegate, version):
+            return False
 
         config_path = system.create_folder("~/.atari800")
         bios_archive = os.path.join(config_path, "atari800-bioses.zip")
@@ -96,6 +97,7 @@ class atari800(Runner):
         config = LutrisConfig(runner_slug="atari800")
         config.raw_runner_config.update({"bios_path": config_path})
         config.save()
+        return True
 
     def find_good_bioses(self, bios_path):
         """ Check for correct bios files """

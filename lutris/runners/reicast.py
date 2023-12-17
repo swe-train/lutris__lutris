@@ -76,13 +76,15 @@ class reicast(Runner):
         ]
 
     async def install_runner_async(self, install_ui_delegate, version=None):
-        await super().install_runner_async(install_ui_delegate, version)
+        if not await super().install_runner_async(install_ui_delegate, version):
+            return False
 
         mapping_path = system.create_folder("~/.reicast/mappings")
         mapping_source = os.path.join(settings.RUNNER_DIR, "reicast/mappings")
         for mapping_file in os.listdir(mapping_source):
             shutil.copy(os.path.join(mapping_source, mapping_file), mapping_path)
         system.create_folder("~/.reicast/data")
+        return True
 
     def get_joypads(self):
         """Return list of joypad in a format usable in the options"""

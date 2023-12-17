@@ -123,7 +123,8 @@ class vice(Runner):
             raise MisconfigurationError("Invalid machine '%s'" % machine) from ex
 
     async def install_runner_async(self, install_ui_delegate, version=None):
-        await super().install_runner_async(install_ui_delegate, version)
+        if not await super().install_runner_async(install_ui_delegate, version):
+            return False
 
         config_path = system.create_folder("~/.vice")
         lib_dir = os.path.join(settings.RUNNER_DIR, "vice/lib/vice")
@@ -133,6 +134,7 @@ class vice(Runner):
             logger.error("Missing lib folder in the Vice runner")
         else:
             system.merge_folders(lib_dir, config_path)
+        return True
 
     def get_roms_path(self, machine=None):
         if not machine:
