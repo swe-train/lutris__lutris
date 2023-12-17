@@ -22,7 +22,7 @@ from lutris.exception_backstops import watch_game_errors
 from lutris.exceptions import GameConfigError, MissingExecutableError
 from lutris.runner_interpreter import export_bash_script, get_launch_parameters
 from lutris.runners import InvalidRunner, import_runner
-from lutris.util import audio, discord, extract, jobs, linux, strings, system, xdgshortcuts
+from lutris.util import audio, discord, extract, linux, strings, system, xdgshortcuts
 from lutris.util.display import (
     DISPLAY_MANAGER, SCREEN_SAVER_INHIBITOR, disable_compositing, enable_compositing, restore_gamma
 )
@@ -770,7 +770,6 @@ class Game(GObject.Object):
 
         async def death_watch():
             try:
-                """Wait for the processes to die; returns True if do they all did."""
                 for _n in range(int(death_watch_seconds / death_watch_interval_seconds)):
                     asyncio.sleep(death_watch_interval_seconds)
                     if not self.get_stop_pids():
