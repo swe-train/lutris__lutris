@@ -275,6 +275,15 @@ class Game(GObject.Object):
         if not handled:
             self.emit("game-unhandled-error", error)
 
+    def execute_async(self, coroutine):
+        """Cause a coroutine to execute, but handle any errors from it with signal_errors()."""
+        def on_done(completed):
+            error = completed.exception()
+            if error:
+                self.signal_error(error)
+        future = asyncio.ensure_future(coroutine)
+        future.add_done_callback(on_done)
+
     def signal_stop(self):
         """Puts the game into the STOPPED state, if it is not already there, and
         then fires game-stop."""
@@ -685,36 +694,32 @@ class Game(GObject.Object):
         return True
 
     def launch(self, launch_ui_delegate):
-        # launch_async should handle all errors itself, I hope!
-        asyncio.ensure_future(self.launch_async(launch_ui_delegate))
+        self.execute_async(self.launch_async(launch_ui_delegate))
 
     async def launch_async(self, launch_ui_delegate):
         """Request launching a game. The game may not be installed yet."""
-        try:
-            if not self.check_launchable():
-                logger.error("Game is not launchable")
-            elif launch_ui_delegate.check_game_launchable(self):
-                self.reload_config()  # Reload the config before launching it.
+        if not self.check_launchable():
+            logger.error("Game is not launchable")
+        elif launch_ui_delegate.check_game_launchable(self):
+            self.reload_config()  # Reload the config before launching it.
 
-                if self.id in LOG_BUFFERS:  # Reset game logs on each launch
-                    log_buffer = LOG_BUFFERS[self.id]
-                    log_buffer.delete(log_buffer.get_start_iter(), log_buffer.get_end_iter())
+            if self.id in LOG_BUFFERS:  # Reset game logs on each launch
+                log_buffer = LOG_BUFFERS[self.id]
+                log_buffer.delete(log_buffer.get_start_iter(), log_buffer.get_end_iter())
 
-                self.state = self.STATE_LAUNCHING
-                self.prelaunch_pids = system.get_running_pid_list()
+            self.state = self.STATE_LAUNCHING
+            self.prelaunch_pids = system.get_running_pid_list()
 
-                if not self.prelaunch_pids:
-                    logger.error("No prelaunch PIDs could be obtained. Game stop may be ineffective.")
-                    self.prelaunch_pids = None
+            if not self.prelaunch_pids:
+                logger.error("No prelaunch PIDs could be obtained. Game stop may be ineffective.")
+                self.prelaunch_pids = None
 
-                self.emit("game-start")
+            self.emit("game-start")
 
-                await async_call(self.runner.prelaunch)
+            await async_call(self.runner.prelaunch)
 
-                if self.configure_game(launch_ui_delegate):
-                    return True
-        except Exception as ex:
-            self.signal_error(self, ex)
+            if self.configure_game(launch_ui_delegate):
+                return True
 
         self.signal_stop()
         return False
@@ -776,7 +781,7 @@ class Game(GObject.Object):
                 # If we still can't kill everything, we'll still say we stopped it.
                 self.stop_game()
 
-        asyncio.ensure_future(death_watch())
+        self.execute_async(death_watch())
 
     def kill_processes(self, sig):
         """Sends a signal to a process list, logging errors."""
@@ -877,11 +882,7 @@ class Game(GObject.Object):
         logger.info("Stopping %s", self)
 
         if self.game_thread:
-            def stop_cb(_result, error):
-                if error:
-                    self.signal_error(error)
-
-            jobs.AsyncCall(self.game_thread.stop, stop_cb)
+            self.execute_async(async_call(self.game_thread.stop))
         self.stop_game()
 
     def on_game_quit(self):
