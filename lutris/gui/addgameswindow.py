@@ -5,13 +5,13 @@ from gi.repository import Gio, GLib, Gtk
 
 from lutris import api, sysoptions
 from lutris.gui.config.add_game_dialog import AddGameDialog
-from lutris.gui.dialogs import ErrorDialog, ModelessDialog, execute_async
+from lutris.gui.dialogs import ErrorDialog, ModelessDialog, async_execute
 from lutris.gui.dialogs.game_import import ImportGameDialog
 from lutris.gui.widgets.common import FileChooserEntry
 from lutris.gui.widgets.navigation_stack import NavigationStack
 from lutris.installer import AUTO_WIN32_EXE, get_installers
 from lutris.scanners.lutris import scan_directory
-from lutris.util.jobs import AsyncCall, async_call
+from lutris.util.jobs import AsyncCall, call_async
 from lutris.util.strings import gtk_safe, slugify
 
 
@@ -252,13 +252,13 @@ class AddGamesWindow(ModelessDialog):  # pylint: disable=too-many-public-methods
         self.search_timer_id = None
 
         if self.text_query:
-            execute_async(self.search_games(self.text_query), parent=self)
+            async_execute(self.search_games_async(self.text_query), parent=self)
 
-    async def search_games(self, text_query):
+    async def search_games_async(self, text_query):
         self.search_spinner.show()
         self.search_spinner.start()
         try:
-            api_games = await async_call(api.search_games, text_query)
+            api_games = await call_async(api.search_games, text_query)
             self.show_search_results(api_games)
         finally:
             self.search_spinner.stop()

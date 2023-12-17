@@ -40,7 +40,7 @@ class AsyncCall(threading.Thread):
         return self.source_id
 
 
-async def async_call(func, *args, **kwargs):
+async def call_async(func, *args, **kwargs):
     def on_complete(r, e):
         if e:
             competed.set_exception(e)

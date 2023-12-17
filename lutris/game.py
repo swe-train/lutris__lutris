@@ -28,7 +28,7 @@ from lutris.util.display import (
 )
 from lutris.util.graphics.xephyr import get_xephyr_command
 from lutris.util.graphics.xrandr import turn_off_except
-from lutris.util.jobs import async_call
+from lutris.util.jobs import call_async
 from lutris.util.log import LOG_BUFFERS, logger
 from lutris.util.process import Process
 from lutris.util.steam.shortcut import remove_shortcut as remove_steam_shortcut
@@ -275,7 +275,7 @@ class Game(GObject.Object):
         if not handled:
             self.emit("game-unhandled-error", error)
 
-    def execute_async(self, coroutine):
+    def async_execute(self, coroutine):
         """Cause a coroutine to execute, but handle any errors from it with signal_errors()."""
         def on_done(completed):
             error = completed.exception()
@@ -694,7 +694,7 @@ class Game(GObject.Object):
         return True
 
     def launch(self, launch_ui_delegate):
-        self.execute_async(self.launch_async(launch_ui_delegate))
+        self.async_execute(self.launch_async(launch_ui_delegate))
 
     async def launch_async(self, launch_ui_delegate):
         """Request launching a game. The game may not be installed yet."""
@@ -716,7 +716,7 @@ class Game(GObject.Object):
 
             self.emit("game-start")
 
-            await async_call(self.runner.prelaunch)
+            await call_async(self.runner.prelaunch)
 
             if self.configure_game(launch_ui_delegate):
                 return True
@@ -768,7 +768,7 @@ class Game(GObject.Object):
         """Forces termination of a running game, but only after a set time has elapsed;
         Invokes stop_game() when the game is dead."""
 
-        async def death_watch():
+        async def death_watch_async():
             try:
                 for _n in range(int(death_watch_seconds / death_watch_interval_seconds)):
                     asyncio.sleep(death_watch_interval_seconds)
@@ -780,7 +780,7 @@ class Game(GObject.Object):
                 # If we still can't kill everything, we'll still say we stopped it.
                 self.stop_game()
 
-        self.execute_async(death_watch())
+        self.async_execute(death_watch_async())
 
     def kill_processes(self, sig):
         """Sends a signal to a process list, logging errors."""
@@ -881,7 +881,7 @@ class Game(GObject.Object):
         logger.info("Stopping %s", self)
 
         if self.game_thread:
-            self.execute_async(async_call(self.game_thread.stop))
+            self.async_execute(call_async(self.game_thread.stop))
         self.stop_game()
 
     def on_game_quit(self):

@@ -7,11 +7,11 @@ from gi.repository import GObject, Gtk
 
 from lutris.database.games import get_games
 from lutris.game import Game
-from lutris.gui.dialogs import QuestionDialog, execute_async
+from lutris.gui.dialogs import QuestionDialog, async_execute
 from lutris.gui.widgets.gi_composites import GtkTemplate
 from lutris.util import datapath
 from lutris.util.strings import get_natural_sort_key, gtk_safe, human_size
-from lutris.util.jobs import async_call
+from lutris.util.jobs import call_async
 from lutris.util.strings import gtk_safe, human_size
 from lutris.util.system import get_disk_size, is_removeable
 
@@ -105,7 +105,7 @@ class UninstallMultipleGamesDialog(Gtk.Dialog):
             self.uninstall_game_list.add(row)
 
         if games_to_size:
-            execute_async(self._update_folder_sizes(games_to_size))
+            async_execute(self._update_folder_sizes_async(games_to_size))
 
     def update_subtitle(self) -> None:
         """Updates the dialog subtitle according to what games are being removed."""
@@ -269,10 +269,10 @@ class UninstallMultipleGamesDialog(Gtk.Dialog):
         if response in (Gtk.ResponseType.DELETE_EVENT, Gtk.ResponseType.CANCEL, Gtk.ResponseType.OK):
             self.destroy()
 
-    async def _update_folder_sizes(self, games_to_size: Set[Game]) -> None:
+    async def _update_folder_sizes_async(self, games_to_size: Set[Game]) -> None:
         for row in self.uninstall_game_list.get_children():
             if row.game in games_to_size and row.game.directory:
-                size = await async_call(get_disk_size, row.game.directory)
+                size = await call_async(get_disk_size, row.game.directory)
                 row.show_folder_size(size)
 
     class GameRemovalRow(Gtk.ListBoxRow):

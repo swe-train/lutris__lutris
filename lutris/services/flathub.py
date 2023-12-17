@@ -14,7 +14,7 @@ from lutris.services.base import BaseService
 from lutris.services.service_game import ServiceGame
 from lutris.services.service_media import ServiceMedia
 from lutris.util import system
-from lutris.util.jobs import async_call
+from lutris.util.jobs import call_async
 from lutris.util.log import logger
 from lutris.util.strings import slugify
 
@@ -112,7 +112,7 @@ class FlathubService(BaseService):
             logger.error("Flathub is not configured on the system. Visit https://flatpak.org/setup/ for instructions.")
             return
         # Install the game
-        service_installers = await async_call(self.get_installers_from_api, app_id)
+        service_installers = await call_async(self.get_installers_from_api, app_id)
         if not service_installers:
             service_installers = [self.generate_installer(db_game)]
         application = Gio.Application.get_default()

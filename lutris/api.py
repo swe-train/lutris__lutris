@@ -17,7 +17,7 @@ from lutris import settings
 from lutris.util import http, system
 from lutris.util.display import get_gpus_info
 from lutris.util.http import HTTPError, Request
-from lutris.util.jobs import async_call
+from lutris.util.jobs import call_async
 from lutris.util.linux import LINUX_SYSTEM
 from lutris.util.log import logger
 
@@ -321,7 +321,7 @@ def get_game_installers(game_slug, revision=None):
 
 
 def get_game_installers_async(game_slug, revision=None):
-    return async_call(get_game_installers, game_slug, revision=revision)
+    return call_async(get_game_installers, game_slug, revision=revision)
 
 
 def get_game_details(slug: str) -> dict:

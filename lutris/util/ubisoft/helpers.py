@@ -34,7 +34,7 @@ def get_local_game_path(special_registry_path, launch_id):
     return local_game_path
 
 
-async def get_size_at_path(start_path):
+def get_size_at_path(start_path):
     total_size = 0
     for dirpath, _dirnames, filenames in os.walk(start_path):
         for f in filenames:

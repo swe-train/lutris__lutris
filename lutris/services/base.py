@@ -12,7 +12,7 @@ from lutris.database import sql
 from lutris.database.games import add_game, get_game_by_field, get_games
 from lutris.database.services import ServiceGameCollection
 from lutris.game import Game
-from lutris.gui.dialogs import NoticeDialog, execute_async
+from lutris.gui.dialogs import NoticeDialog, async_execute
 from lutris.gui.dialogs.webconnect_dialog import DEFAULT_USER_AGENT, WebConnectDialog
 from lutris.gui.views.media_loader import download_media
 from lutris.gui.widgets.utils import BANNER_SIZE, ICON_SIZE
@@ -20,7 +20,7 @@ from lutris.installer import get_installers
 from lutris.services.service_media import ServiceMedia
 from lutris.util import system
 from lutris.util.cookies import WebkitCookieJar
-from lutris.util.jobs import AsyncCall, async_call
+from lutris.util.jobs import AsyncCall, call_async
 from lutris.util.log import logger
 from lutris.util.strings import slugify
 
@@ -298,7 +298,7 @@ class BaseService(GObject.Object):
                 run now. Many installers start from here, but continue running after this returns;
                 they return None.
         """
-        execute_async(self.install_game_async(db_game, update=update))
+        async_execute(self.install_game_async(db_game, update=update))
 
     async def install_game_async(self, db_game, update=False):
         """A version of install() that is asynchronous; by efault install() calls this."""
@@ -309,7 +309,7 @@ class BaseService(GObject.Object):
         if self.local:
             return self.simple_install(db_game)
 
-        service_installers = await async_call(self.get_service_installers, db_game, update=update)
+        service_installers = await call_async(self.get_service_installers, db_game, update=update)
         application = Gio.Application.get_default()
         application.show_installer_window(service_installers, service=self, appid=db_game["appid"])
 

@@ -288,7 +288,7 @@ class ErrorDialog(Gtk.MessageDialog):
         self.destroy()
 
 
-def execute_async(coroutine, parent=None):
+def async_execute(coroutine, parent=None):
     def report_error(fut):
         err = fut.exception()
         if err:
