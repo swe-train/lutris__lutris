@@ -764,15 +764,17 @@ class Game(GObject.Object):
         Invokes stop_game() when the game is dead."""
 
         async def death_watch():
-            """Wait for the processes to die; returns True if do they all did."""
-            for _n in range(int(death_watch_seconds / death_watch_interval_seconds)):
-                asyncio.sleep(death_watch_interval_seconds)
-                if not self.get_stop_pids():
-                    return  # all process gone, we're done
+            try:
+                """Wait for the processes to die; returns True if do they all did."""
+                for _n in range(int(death_watch_seconds / death_watch_interval_seconds)):
+                    asyncio.sleep(death_watch_interval_seconds)
+                    if not self.get_stop_pids():
+                        return  # all process gone, we're done
 
-            self.kill_processes(signal.SIGKILL)
-            # If we still can't kill everything, we'll still say we stopped it.
-            self.stop_game()
+                self.kill_processes(signal.SIGKILL)
+            finally:
+                # If we still can't kill everything, we'll still say we stopped it.
+                self.stop_game()
 
         asyncio.ensure_future(death_watch())
 
