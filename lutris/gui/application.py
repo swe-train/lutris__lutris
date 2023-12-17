@@ -15,7 +15,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
+import asyncio
 import json
 import logging
 import os
@@ -549,7 +549,7 @@ class Application(Gtk.Application):
         # install Runner
         if options.contains("install-runner"):
             runner = options.lookup_value("install-runner").get_string()
-            self.install_runner(runner)
+            self.async_execute(self.install_runner_async(runner))
             return 0
 
         # Uninstall Runner
@@ -1008,11 +1008,11 @@ class Application(Gtk.Application):
             if i["version"]:
                 print(i)
 
-    def install_runner(self, runner):
+    async def install_runner_async(self, runner):
         if runner.startswith("lutris"):
-            self.install_wine_cli(runner)
+            await self.install_wine_cli_async(runner)
         else:
-            self.install_cli(runner)
+            await self.install_cli_async(runner)
 
     def uninstall_runner(self, runner):
         if "wine" in runner:
@@ -1027,7 +1027,7 @@ class Application(Gtk.Application):
         else:
             self.uninstall_runner_cli(runner)
 
-    def install_wine_cli(self, version):
+    async def install_wine_cli_async(self, version):
         """
         Downloads wine runner using lutris -r <runner>
         """
@@ -1039,7 +1039,7 @@ class Application(Gtk.Application):
         else:
             try:
                 runner = import_runner("wine")
-                runner().install(self.install_ui_delegate, version=version)
+                await runner().install_runner_async(self.install_ui_delegate, version=version)
                 print(f"Wine version '{version}' has been installed.")
             except (InvalidRunner, RunnerInstallationError) as ex:
                 print(ex.message)
@@ -1058,7 +1058,7 @@ Please check if the Wine Runner and specified version are installed (for that us
 Also, check that the version specified is in the correct format.
                 """)
 
-    def install_cli(self, runner_name):
+    async def install_cli_async(self, runner_name):
         """
         install the runner provided in prepare_runner_cli()
         """
@@ -1068,7 +1068,7 @@ Also, check that the version specified is in the correct format.
             if runner.is_installed():
                 print(f"'{runner_name}' is already installed.")
             else:
-                runner.install(self.install_ui_delegate, version=None, callback=None)
+                await runner.install_runner_async(self.install_ui_delegate)
                 print(f"'{runner_name}' has been installed")
         except (InvalidRunner, RunnerInstallationError) as ex:
             print(ex.message)
@@ -1092,6 +1092,18 @@ Also, check that the version specified is in the correct format.
             print(f"'{runner_name}' has been uninstalled.")
         else:
             print(f"Runner '{runner_name}' cannot be uninstalled.")
+
+    def async_execute(self, coroutine):
+        def on_completed(completed):
+            error = completed.exception()
+            if error:
+                logger.exception("Error occurred %s:", error)
+            self.release()
+
+        self.hold()
+        future = asyncio.ensure_future(coroutine)
+        future.add_done_callback(on_completed)
+        return future
 
     def do_shutdown(self):  # pylint: disable=arguments-differ
         logger.info("Shutting down Lutris")

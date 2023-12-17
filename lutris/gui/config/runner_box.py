@@ -4,7 +4,7 @@ from gi.repository import GObject, Gtk
 
 from lutris import runners
 from lutris.gui.config.runner import RunnerConfigDialog
-from lutris.gui.dialogs import ErrorDialog, QuestionDialog
+from lutris.gui.dialogs import ErrorDialog, QuestionDialog, async_execute
 from lutris.gui.dialogs.runner_install import RunnerInstallDialog
 from lutris.gui.widgets.scaled_image import ScaledImage
 from lutris.util.log import logger
@@ -91,21 +91,17 @@ class RunnerBox(Gtk.Box):
 
     def on_install_clicked(self, widget):
         """Install a runner."""
-        logger.debug("Install of %s requested", self.runner)
-        window = self.get_toplevel()
-        try:
-            self.runner.install(window)
-        except (
-            runners.RunnerInstallationError,
-            runners.NonInstallableRunnerError,
-        ) as ex:
-            logger.error(ex)
-            ErrorDialog(ex.message, parent=self.get_toplevel())
-            return
-        if self.runner.is_installed():
-            self.emit("runner-installed")
-        else:
-            ErrorDialog("Runner failed to install", parent=self.get_toplevel())
+        async def install_runner_async():
+            logger.debug("Install of %s requested", self.runner)
+            window = self.get_toplevel()
+            self.runner.install_runner_async(window)
+
+            if self.runner.is_installed():
+                self.emit("runner-installed")
+            else:
+                ErrorDialog("Runner failed to install", parent=self.get_toplevel())
+
+        async_execute(install_runner_async(), parent=self.get_toplevel())
 
     def on_configure_clicked(self, widget):
         window = self.get_toplevel()

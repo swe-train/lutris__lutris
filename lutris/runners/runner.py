@@ -1,4 +1,5 @@
 """Base module for runners"""
+import asyncio
 import os
 import signal
 from gettext import gettext as _
@@ -463,6 +464,14 @@ class Runner:  # pylint: disable=too-many-public-methods
         """Get the appropriate version for a runner, as with get_default_runner_version(),
         but this method allows the runner to apply its configuration."""
         return get_default_runner_version_info(self.name, version)
+
+    def install_runner_async(self, install_ui_delegate, version=None):
+        def on_completed():
+            fut.set_result(True)
+
+        fut = asyncio.get_running_loop().create_future()
+        self.install(install_ui_delegate, version=version, callback=on_completed)
+        return fut
 
     def install(self, install_ui_delegate, version=None, callback=None):
         """Install runner using package management systems."""

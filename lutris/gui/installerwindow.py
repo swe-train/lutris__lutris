@@ -8,7 +8,9 @@ from gi.repository import Gio, GLib, Gtk
 from lutris import settings
 from lutris.config import LutrisConfig
 from lutris.game import Game
-from lutris.gui.dialogs import DirectoryDialog, ErrorDialog, InstallerSourceDialog, ModelessDialog, QuestionDialog
+from lutris.gui.dialogs import (
+    DirectoryDialog, ErrorDialog, InstallerSourceDialog, ModelessDialog, QuestionDialog, async_execute
+)
 from lutris.gui.dialogs.cache import CacheConfigurationDialog
 from lutris.gui.dialogs.delegates import DialogInstallUIDelegate
 from lutris.gui.installer.files_box import InstallerFilesBox
@@ -439,14 +441,14 @@ class InstallerWindow(ModelessDialog,
     def on_destination_confirmed(self, _button=None):
         """Let the interpreter take charge of the next stages."""
 
-        def launch_install():
-            if not self.interpreter.launch_install(self):
+        async def launch_install_async():
+            if not await self.interpreter.launch_install_async(self):
                 self.stack.navigation_reset()
 
         self.load_spinner_page(_("Preparing Lutris for installation"),
                                cancellable=False,
                                extra_buttons=[self.cache_button, self.source_button])
-        GLib.idle_add(launch_install)
+        async_execute(launch_install_async())
 
     def on_location_entry_changed(self, entry, _data=None):
         """Set the installation target for the game."""
