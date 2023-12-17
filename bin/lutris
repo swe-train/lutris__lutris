@@ -16,6 +16,8 @@ import gettext
 import locale
 import os
 import sys
+import asyncio
+import gbulb
 from os.path import dirname, normpath, realpath
 
 LAUNCH_PATH = dirname(realpath(__file__))
@@ -57,5 +59,11 @@ except ImportError:
 
 from lutris.gui.application import Application  # pylint: disable=no-name-in-module
 
+gbulb.install(gtk=True)  # only necessary if you're using GtkApplication
+
 app = Application()  # pylint: disable=invalid-name
-sys.exit(app.run(sys.argv))
+
+loop = asyncio.get_event_loop()
+loop.set_argv(sys.argv)
+loop.run_forever(application=app)
+

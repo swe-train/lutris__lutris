@@ -1,3 +1,4 @@
+import asyncio
 import sys
 import threading
 import traceback
@@ -37,6 +38,18 @@ class AsyncCall(threading.Thread):
 
         self.source_id = schedule_at_idle(self.callback, result, error)
         return self.source_id
+
+
+async def async_call(func, *args, **kwargs):
+    def on_complete(r, e):
+        if e:
+            competed.set_exception(e)
+        else:
+            competed.set_result(r)
+
+    competed = asyncio.get_running_loop().create_future()
+    AsyncCall(func, on_complete, *args, **kwargs)
+    return await competed
 
 
 def synchronized_call(func, event, result):
