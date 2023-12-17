@@ -502,7 +502,7 @@ class Runner:  # pylint: disable=too-many-public-methods
         if not install_ui_delegate.download_install_file(url, runner_archive):
             return False
 
-        await call_async(self.extract(archive=runner_archive, dest=dest, merge_single=merge_single))
+        await call_async(self.extract, archive=runner_archive, dest=dest, merge_single=merge_single)
         return True
 
     def extract(self, archive=None, dest=None, merge_single=None):

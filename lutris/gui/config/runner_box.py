@@ -94,7 +94,7 @@ class RunnerBox(Gtk.Box):
         async def install_runner_async():
             logger.debug("Install of %s requested", self.runner)
             window = self.get_toplevel()
-            self.runner.install_runner_async(window)
+            await self.runner.install_runner_async(window)
 
             if self.runner.is_installed():
                 self.emit("runner-installed")

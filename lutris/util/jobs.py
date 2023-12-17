@@ -17,6 +17,9 @@ class AsyncCall(threading.Thread):
         self.source_id = None
         self.stop_request = threading.Event()
 
+        if not func:
+            raise ValueError("AsyncCall func argument can't be None.")
+
         super().__init__(target=self.target, args=args, kwargs=kwargs)
         self.function = func
         self.callback = callback if callback else lambda r, e: None
