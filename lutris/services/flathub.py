@@ -103,7 +103,7 @@ class FlathubService(BaseService):
             game.save()
         return flathub_games
 
-    async def install_game_async(self, db_game):
+    async def install_game_async(self, db_game, update=False):
         """Install a Flathub game"""
         app_id = db_game["appid"]
         logger.debug("Installing %s from service %s", app_id, self.id)

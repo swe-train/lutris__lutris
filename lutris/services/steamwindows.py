@@ -55,7 +55,7 @@ class SteamWindowsService(SteamService):
         if db_entry:
             return Game(db_entry["id"])
 
-    async def install_game_async(self, db_game):
+    async def install_game_async(self, db_game, update=False):
         steam_game = self.get_steam()
         if not steam_game:
             installers = await get_installers_async(

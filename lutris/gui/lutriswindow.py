@@ -17,6 +17,7 @@ from lutris.game import Game
 from lutris.gui import dialogs
 from lutris.gui.addgameswindow import AddGamesWindow
 from lutris.gui.config.preferences_dialog import PreferencesDialog
+from lutris.gui.dialogs import async_execute
 from lutris.gui.dialogs.delegates import DialogInstallUIDelegate, DialogLaunchUIDelegate
 from lutris.gui.dialogs.game_import import ImportGameDialog
 from lutris.gui.download_queue import DownloadQueue
@@ -1076,23 +1077,26 @@ class LutrisWindow(Gtk.ApplicationWindow,
 
     def on_game_activated(self, view, game_id):
         """Handles view activations (double click, enter press)"""
+        async_execute(self._activate_game_async(game_id))
+
+    async def _activate_game_async(self, game_id):
         if self.service:
             logger.debug("Looking up %s game %s", self.service.id, game_id)
             db_game = games_db.get_game_for_service(self.service.id, game_id)
             if self.service.id == "lutris":
                 if not db_game or not db_game["installed"]:
-                    self.service.install(game_id)
+                    await self.service.install_game_async(game_id)
                     return
                 game_id = db_game["id"]
             else:
                 if db_game and db_game["installed"]:
                     game_id = db_game["id"]
                 else:
-                    service_game = ServiceGameCollection.get_game(self.service.id, game_id)
-                    if not service_game:
+                    service_db_game = ServiceGameCollection.get_game(self.service.id, game_id)
+                    if not service_db_game:
                         logger.error("No game %s found for %s", game_id, self.service.id)
                         return
-                    game_id = self.service.install(service_game)
+                    game_id = await self.service.install_game_async(service_db_game)
         if game_id:
             game = Game(game_id)
             if game.is_installed:

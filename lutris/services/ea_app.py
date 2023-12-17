@@ -381,7 +381,7 @@ class EAAppService(OnlineService):
     def get_installed_runner_name(self, db_game):
         return self.runner
 
-    async def install_game_async(self, db_game):
+    async def install_game_async(self, db_game, update=False):
         ea_app_game = await get_game_by_field_async(self.client_installer, "slug")
         application = Gio.Application.get_default()
         if not ea_app_game or not ea_app_game["installed"]:

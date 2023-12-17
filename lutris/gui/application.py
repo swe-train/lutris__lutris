@@ -39,9 +39,9 @@ from lutris.api import parse_installer_url, get_runners
 from lutris.command import exec_command
 from lutris.database import games as games_db
 from lutris.game import Game, export_game, import_game
-from lutris.installer import get_installers
+from lutris.installer import get_installers, get_installers_async
 from lutris.gui.config.preferences_dialog import PreferencesDialog
-from lutris.gui.dialogs import ErrorDialog, InstallOrPlayDialog, NoticeDialog
+from lutris.gui.dialogs import ErrorDialog, InstallOrPlayDialog, NoticeDialog, async_execute
 from lutris.gui.dialogs.issue import IssueReportWindow
 from lutris.gui.dialogs.delegates import LaunchUIDelegate, InstallUIDelegate, CommandLineUIDelegate
 from lutris.gui.installerwindow import InstallerWindow, InstallationKind
@@ -722,7 +722,7 @@ class Application(Gtk.Application):
             service_game = ServiceGameCollection.get_game(service, appid)
             if service_game:
                 service = get_enabled_services()[service]()
-                service.install(service_game)
+                self.async_execute(service.install_game_async(service_game))
                 return 0
 
         if action == "cancel":
@@ -809,38 +809,46 @@ class Application(Gtk.Application):
 
     def on_game_install(self, game):
         """Request installation of a game"""
-        if game.service and game.service != "lutris":
-            service = get_enabled_services()[game.service]()
-            db_game = ServiceGameCollection.get_game(service.id, game.appid)
-            if not db_game:
-                logger.error("Can't find %s for %s", game.name, service.name)
-                return True
-            try:
-                game_id = service.install(db_game)
-            except ValueError as e:
-                logger.debug(e)
-                game_id = None
-
-            if game_id:
-                def on_error(game, error):
-                    logger.exception("Unable to install game: %s", error)
-                    return True
-
-                game = Game(game_id)
-                game.connect("game-error", on_error)
-                game.launch(self.launch_ui_delegate)
-            return True
-        if not game.slug:
-            raise ValueError("Invalid game passed: %s" % game)
-            # return True
-        AsyncCall(get_installers, self.on_installers_loaded, game.slug)
+        async_execute(self._install_game_async(game))
         return True
 
-    def on_installers_loaded(self, installers, _error):
+    async def _install_game_async(self, game):
+        if game.service and game.service != "lutris":
+            self._install_service_game_async(game)
+        else:
+            self._install_lutris_game_async(game)
+
+    async def _install_lutris_game_async(self, game):
+        if not game.slug:
+            raise ValueError("Invalid game passed: %s" % game)
+
+        installers = await get_installers_async(game.slug)
+
         if installers:
             self.show_installer_window(installers)
         else:
-            ErrorDialog(_("No installer available."), parent=self.window)
+            raise RuntimeError(_("No installer available."))
+
+    async def _install_service_game_async(self, game):
+        service = get_enabled_services()[game.service]()
+        db_game = ServiceGameCollection.get_game(service.id, game.appid)
+        if not db_game:
+            logger.error("Can't find %s for %s", game.name, service.name)
+            return
+        try:
+            game_id = await service.install_game_async(db_game)
+        except ValueError as e:
+            logger.debug(e)
+            game_id = None
+
+        if game_id:
+            def on_error(_game, error):
+                logger.exception("Unable to install game: %s", error)
+                return True
+
+            game = Game(game_id)
+            game.connect("game-error", on_error)
+            await game.launch_async(self.launch_ui_delegate)
 
     def on_game_install_update(self, game):
         service = get_enabled_services()[game.service]()

@@ -270,7 +270,7 @@ class UbisoftConnectService(OnlineService):
     def get_installed_runner_name(self, db_game):
         return self.runner
 
-    async def install_game_async(self, db_game):
+    async def install_game_async(self, db_game, update=False):
         """Install a game or Ubisoft Connect if not already installed"""
         ubisoft_connect = await get_game_by_field_async(self.client_installer, "slug")
         application = Gio.Application.get_default()

@@ -217,7 +217,7 @@ class SteamService(BaseService):
     def get_installed_runner_name(self, db_game):
         return self.runner
 
-    async def install_game_async(self, db_game):
+    async def install_game_async(self, db_game, update=False):
         appid = db_game["appid"]
         db_games = get_games(filters={"service_id": appid, "installed": "1", "service": self.id})
         existing_game = await call_async(self.match_existing_game, db_games, appid)

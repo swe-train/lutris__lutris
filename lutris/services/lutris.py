@@ -115,7 +115,7 @@ class LutrisService(OnlineService):
     def get_installed_slug(self, db_game):
         return db_game["slug"]
 
-    async def install_game_async(self, db_game):
+    async def install_game_async(self, db_game, update=False):
         if isinstance(db_game, dict):
             slug = db_game["slug"]
         else:

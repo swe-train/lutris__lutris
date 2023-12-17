@@ -7,6 +7,7 @@ from lutris import runners, services
 from lutris.database.games import get_game_for_service
 from lutris.game import Game
 from lutris.game_actions import get_game_actions
+from lutris.gui.dialogs import ErrorDialog, async_execute
 from lutris.gui.widgets.contextual_menu import update_action_widget_visibility
 from lutris.util.strings import gtk_safe
 
@@ -268,7 +269,7 @@ class GameBar(Gtk.Box):
 
     def on_install_clicked(self, button):
         """Handler for installing service games"""
-        self.service.install(self.db_game)
+        async_execute(self.service.install_game_async(self.db_game))
 
     def on_game_state_changed(self, game):
         """Handler called when the game has changed state"""

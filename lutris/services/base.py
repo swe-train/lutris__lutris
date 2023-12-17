@@ -12,7 +12,7 @@ from lutris.database import sql
 from lutris.database.games import add_game, get_game_by_field, get_games
 from lutris.database.services import ServiceGameCollection
 from lutris.game import Game
-from lutris.gui.dialogs import NoticeDialog, async_execute
+from lutris.gui.dialogs import NoticeDialog
 from lutris.gui.dialogs.webconnect_dialog import DEFAULT_USER_AGENT, WebConnectDialog
 from lutris.gui.views.media_loader import download_media
 from lutris.gui.widgets.utils import BANNER_SIZE, ICON_SIZE
@@ -286,7 +286,7 @@ class BaseService(GObject.Object):
             return []
         return service_installers
 
-    def install(self, db_game, update=False):
+    async def install_game_async(self, db_game, update=False):
         """Install a service game, or starts the installer of the game.
 
         Args:
@@ -298,10 +298,6 @@ class BaseService(GObject.Object):
                 run now. Many installers start from here, but continue running after this returns;
                 they return None.
         """
-        async_execute(self.install_game_async(db_game, update=update))
-
-    async def install_game_async(self, db_game, update=False):
-        """A version of install() that is asynchronous; by efault install() calls this."""
         logger.debug("Installing %s from service %s", db_game["appid"], self.id)
 
         # Local services (aka game libraries that don't require any type of online interaction) can

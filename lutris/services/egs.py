@@ -398,7 +398,7 @@ class EpicGamesStoreService(OnlineService):
     def get_installed_runner_name(self, db_game):
         return self.runner
 
-    async def install_game_async(self, db_game):
+    async def install_game_async(self, db_game, update=False):
         egs_game = await get_game_by_field_async(self.client_installer, "slug")
         application = Gio.Application.get_default()
         if not egs_game or not egs_game["installed"]:
