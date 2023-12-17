@@ -283,7 +283,7 @@ class Game(GObject.Object):
             if error:
                 self.signal_error(error)
 
-        future = asyncio.ensure_future(coroutine)
+        future = asyncio.create_task(coroutine)
         future.add_done_callback(on_done)
 
     def signal_stop(self):

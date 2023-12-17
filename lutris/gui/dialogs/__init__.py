@@ -294,7 +294,7 @@ def async_execute(coroutine, parent=None):
         if err:
             ErrorDialog(err, parent=parent)
 
-    future = asyncio.ensure_future(coroutine)
+    future = asyncio.create_task(coroutine)
     future.add_done_callback(report_error)
 
 

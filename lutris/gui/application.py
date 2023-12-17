@@ -1100,8 +1100,10 @@ Also, check that the version specified is in the correct format.
                 logger.exception("Error occurred %s:", error)
             self.release()
 
+        # Keep the application upon until the co-routine
+        # completes.
         self.hold()
-        future = asyncio.ensure_future(coroutine)
+        future = asyncio.create_task(coroutine)
         future.add_done_callback(on_completed)
         return future
 
