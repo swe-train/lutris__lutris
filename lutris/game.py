@@ -1,5 +1,5 @@
 """Module that actually runs the games."""
-
+import asyncio
 # pylint: disable=too-many-public-methods disable=too-many-lines
 import json
 import os
@@ -28,6 +28,7 @@ from lutris.util.display import (
 )
 from lutris.util.graphics.xephyr import get_xephyr_command
 from lutris.util.graphics.xrandr import turn_off_except
+from lutris.util.jobs import async_call
 from lutris.util.log import LOG_BUFFERS, logger
 from lutris.util.process import Process
 from lutris.util.steam.shortcut import remove_shortcut as remove_steam_shortcut
@@ -257,7 +258,7 @@ class Game(GObject.Object):
         """Return a human-readable formatted play time"""
         return strings.get_formatted_playtime(self.playtime)
 
-    def signal_error(self, error):
+    def signal_error(self, error, stop_game=False):
         """Reports an error by firing game-error. If handled, it returns
         True to indicate it handled it, and that's it. If not, this fires
         game-unhandled-error, which is actually handled via an emission hook
@@ -265,9 +266,21 @@ class Game(GObject.Object):
 
         This allows special error handling to be set up for a particular Game, but
         there's always some handling."""
+
+        logger.exception("%s has encountered an error: %s", self, error, exc_info=error)
+        if stop_game and self.state != self.STATE_STOPPED:
+            self.signal_stop()
+
         handled = self.emit("game-error", error)
         if not handled:
             self.emit("game-unhandled-error", error)
+
+    def signal_stop(self):
+        """Puts the game into the STOPPED state, if it is not already there, and
+        then fires game-stop."""
+        if self.state != self.STATE_STOPPED:
+            self.state = self.STATE_STOPPED
+            self.emit("game-stop")
 
     @staticmethod
     def get_config_error(gameplay_info):
@@ -608,7 +621,6 @@ class Game(GObject.Object):
 
         return gameplay_info
 
-    @watch_game_errors(game_stop_result=False)
     def configure_game(self, launch_ui_delegate):
         """Get the game ready to start, applying all the options.
         This method sets the game_runtime_config attribute.
@@ -672,39 +684,40 @@ class Game(GObject.Object):
         self.start_game()
         return True
 
-    @watch_game_errors(game_stop_result=False)
     def launch(self, launch_ui_delegate):
+        # launch_async should handle all errors itself, I hope!
+        asyncio.ensure_future(self.launch_async(launch_ui_delegate))
+
+    async def launch_async(self, launch_ui_delegate):
         """Request launching a game. The game may not be installed yet."""
-        if not self.check_launchable():
-            logger.error("Game is not launchable")
-            return False
+        try:
+            if not self.check_launchable():
+                logger.error("Game is not launchable")
+            elif launch_ui_delegate.check_game_launchable(self):
+                self.reload_config()  # Reload the config before launching it.
 
-        if not launch_ui_delegate.check_game_launchable(self):
-            return False
+                if self.id in LOG_BUFFERS:  # Reset game logs on each launch
+                    log_buffer = LOG_BUFFERS[self.id]
+                    log_buffer.delete(log_buffer.get_start_iter(), log_buffer.get_end_iter())
 
-        self.reload_config()  # Reload the config before launching it.
+                self.state = self.STATE_LAUNCHING
+                self.prelaunch_pids = system.get_running_pid_list()
 
-        if self.id in LOG_BUFFERS:  # Reset game logs on each launch
-            log_buffer = LOG_BUFFERS[self.id]
-            log_buffer.delete(log_buffer.get_start_iter(), log_buffer.get_end_iter())
+                if not self.prelaunch_pids:
+                    logger.error("No prelaunch PIDs could be obtained. Game stop may be ineffective.")
+                    self.prelaunch_pids = None
 
-        self.state = self.STATE_LAUNCHING
-        self.prelaunch_pids = system.get_running_pid_list()
+                self.emit("game-start")
 
-        if not self.prelaunch_pids:
-            logger.error("No prelaunch PIDs could be obtained. Game stop may be ineffective.")
-            self.prelaunch_pids = None
+                await async_call(self.runner.prelaunch)
 
-        self.emit("game-start")
+                if self.configure_game(launch_ui_delegate):
+                    return True
+        except Exception as ex:
+            self.signal_error(self, ex)
 
-        @watch_game_errors(game_stop_result=False, game=self)
-        def configure_game(_ignored, error):
-            if error:
-                raise error
-            self.configure_game(launch_ui_delegate)
-
-        jobs.AsyncCall(self.runner.prelaunch, configure_game)
-        return True
+        self.signal_stop()
+        return False
 
     def start_game(self):
         """Run a background command to launch the game"""
@@ -827,8 +840,7 @@ class Game(GObject.Object):
             logger.warning("The game has run for a very short time, did it crash?")
             # Inspect why it could have crashed
 
-        self.state = self.STATE_STOPPED
-        self.emit("game-stop")
+        self.signal_stop()
         if os.path.exists(self.now_playing_path):
             os.unlink(self.now_playing_path)
         if not self.timer.finished:
