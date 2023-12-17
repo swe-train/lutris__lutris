@@ -763,24 +763,18 @@ class Game(GObject.Object):
         """Forces termination of a running game, but only after a set time has elapsed;
         Invokes stop_game() when the game is dead."""
 
-        def death_watch():
+        async def death_watch():
             """Wait for the processes to die; returns True if do they all did."""
             for _n in range(int(death_watch_seconds / death_watch_interval_seconds)):
-                time.sleep(death_watch_interval_seconds)
+                asyncio.sleep(death_watch_interval_seconds)
                 if not self.get_stop_pids():
-                    return True
-            return False
+                    return  # all process gone, we're done
 
-        def death_watch_cb(all_died, error):
-            """Called after the death watch to more firmly kill any survivors."""
-            if error:
-                self.signal_error(error)
-            elif not all_died:
-                self.kill_processes(signal.SIGKILL)
+            self.kill_processes(signal.SIGKILL)
             # If we still can't kill everything, we'll still say we stopped it.
             self.stop_game()
 
-        jobs.AsyncCall(death_watch, death_watch_cb)
+        asyncio.ensure_future(death_watch())
 
     def kill_processes(self, sig):
         """Sends a signal to a process list, logging errors."""
