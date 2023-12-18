@@ -17,7 +17,6 @@ import locale
 import os
 import sys
 import asyncio
-import gbulb
 from os.path import dirname, normpath, realpath
 
 LAUNCH_PATH = dirname(realpath(__file__))
@@ -57,13 +56,31 @@ try:
 except ImportError:
     pass
 
-from lutris.gui.application import Application  # pylint: disable=no-name-in-module
+import gi
 
-gbulb.install(gtk=True)  # only necessary if you're using GtkApplication
+gi.require_version("Gdk", "3.0")
+gi.require_version("Gtk", "3.0")
+
+from gi.repository import Gio, GLib, Gtk, GObject
+from lutris.gui.application import Application  # pylint: disable=no-name-in-module
 
 app = Application()  # pylint: disable=invalid-name
 
-loop = asyncio.get_event_loop()
-loop.set_argv(sys.argv)
-loop.run_forever(application=app)
 
+async def start(app):
+    app.do_local_command_line(app, sys.argv)
+    app.register()
+    app.activate()
+
+
+def glib_update(main_context, loop):
+    while main_context.pending():
+        main_context.iteration(False)
+    loop.call_later(0.01, glib_update, main_context, loop)
+
+
+loop = asyncio.get_event_loop()
+main_context = GLib.MainContext.default()
+loop.create_task(start(app))
+glib_update(main_context, loop)
+loop.run_forever()

@@ -15,6 +15,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
+import asyncio
 import json
 import logging
 import os
@@ -89,6 +90,7 @@ class Application(Gtk.Application):
         self.force_updates = False
         self.css_provider = Gtk.CssProvider.new()
         self.window = None
+        self.hold_count = 0
         self.launch_ui_delegate = LaunchUIDelegate()
         self.install_ui_delegate = InstallUIDelegate()
 
@@ -112,6 +114,32 @@ class Application(Gtk.Application):
             self.add_arguments()
         else:
             ErrorDialog(_("Your Linux distribution is too old. Lutris won't function properly."))
+
+    def hold(self):
+        self.hold_count += 1
+
+    def release(self):
+        self.hold_count -= 1
+        if self.hold_count <= 0:
+            asyncio.get_running_loop().stop()
+            self.do_shutdown()
+
+    def hold_for(self, window):
+        def on_destroy(*_args):
+            self.release()
+
+        window.connect("destroy", on_destroy)
+        self.hold()
+
+    def quit(self):
+        asyncio.get_running_loop().stop()
+        self.do_shutdown()
+
+    @property
+    def keep_running(self):
+        if self.hold_count is None:
+            return False
+        return self.hold_count > 0 or len(self.get_windows()) > 0
 
     def add_arguments(self):
         if hasattr(self, "set_option_context_summary"):
@@ -335,8 +363,11 @@ class Application(Gtk.Application):
 
         init_main_loop()
 
+        def on_quit(*_args):
+            self.quit()
+
         action = Gio.SimpleAction.new("quit")
-        action.connect("activate", lambda *x: self.quit())
+        action.connect("activate", on_quit)
         self.add_action(action)
         self.add_accelerator("<Primary>q", "app.quit")
 
@@ -680,7 +711,7 @@ class Application(Gtk.Application):
                 # Installers can use game or installer slugs
                 self.quit_on_game_exit = True
                 db_game = games_db.get_game_by_field(game_slug, "slug") \
-                    or games_db.get_game_by_field(game_slug, "installer_slug")
+                          or games_db.get_game_by_field(game_slug, "installer_slug")
             else:
                 # Dazed and confused, try anything that might works
                 db_game = (
@@ -1103,6 +1134,10 @@ Also, check that the version specified is in the correct format.
         self.hold()
         task = async_execute(coroutine, error_objects=[self])
         task.add_done_callback(lambda *_args: self.release())
+
+    def do_quit_mainloop(self):
+        asyncio.get_running_loop().stop()
+        super().do_quit_mainloop(self)
 
     def do_shutdown(self):  # pylint: disable=arguments-differ
         logger.info("Shutting down Lutris")
