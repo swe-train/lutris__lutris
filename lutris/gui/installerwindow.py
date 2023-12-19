@@ -20,7 +20,7 @@ from lutris.installer import InstallationKind, get_installers, interpreter
 from lutris.installer.errors import MissingGameDependency, ScriptingError
 from lutris.installer.interpreter import ScriptInterpreter
 from lutris.util import xdgshortcuts
-from lutris.util.jobs import AsyncCall
+from lutris.util.jobs import call_async
 from lutris.util.log import logger
 from lutris.util.steam import shortcut as steam_shortcut
 from lutris.util.strings import gtk_safe, human_size
@@ -462,8 +462,9 @@ class InstallerWindow(ModelessDialog,
         settings.write_setting("installer_create_steam_shortcut", checkbutton.get_active())
         self.config["create_steam_shortcut"] = checkbutton.get_active()
 
-    def on_runners_ready(self, _widget=None):
-        AsyncCall(self.interpreter.get_extras, self.on_extras_loaded)
+    async def on_runners_ready(self, _widget=None):
+        all_extras = await call_async(self.interpreter.get_extras)
+        await self.on_extras_loaded(all_extras)
 
     # Extras Page
     #
@@ -485,11 +486,7 @@ class InstallerWindow(ModelessDialog,
             label += " (%s)" % ", ".join(_infos)
         return label
 
-    def on_extras_loaded(self, all_extras, error):
-        if error:
-            self._handle_callback_error(error)
-            return
-
+    async def on_extras_loaded(self, all_extras):
         if all_extras:
             self.extras_tree_store.clear()
             for extra_source, extras in all_extras.items():
@@ -499,7 +496,7 @@ class InstallerWindow(ModelessDialog,
 
             self.stack.navigate_to_page(self.present_extras_page)
         else:
-            self.on_extras_ready()
+            await self.load_installer_files_page()
 
     def create_extras_page(self):
         treeview = Gtk.TreeView(self.extras_tree_store)
@@ -580,10 +577,7 @@ class InstallerWindow(ModelessDialog,
         extra_store.foreach(save_extra)
 
         self.interpreter.extras = selected_extras
-        GLib.idle_add(self.on_extras_ready)
-
-    def on_extras_ready(self, *args):
-        self.load_installer_files_page()
+        GLib.idle_add(self.load_installer_files_page)
 
     # Installer Files & Downloading Page
     #
@@ -591,18 +585,13 @@ class InstallerWindow(ModelessDialog,
     # also select pre-existing files. The downloading page uses the same page widget,
     # but different buttons at the bottom.
 
-    def load_installer_files_page(self):
+    async def load_installer_files_page(self):
         if self.installation_kind == InstallationKind.UPDATE:
             patch_version = self.interpreter.installer.version
         else:
             patch_version = None
 
-        AsyncCall(self.interpreter.installer.prepare_game_files, self.on_files_prepared, patch_version)
-
-    def on_files_prepared(self, _result, error):
-        if error:
-            self._handle_callback_error(error)
-            return
+        await call_async(self.interpreter.installer.prepare_game_files, patch_version)
 
         if not self.interpreter.installer.files:
             logger.debug("Installer doesn't require files")
@@ -862,18 +851,18 @@ class InstallerWindow(ModelessDialog,
     #
     # Loading this page does some final installation steps before the UI updates.
 
-    def load_finish_install_page(self, game_id, status):
+    async def load_finish_install_page(self, game_id, status):
         if self.config.get("create_desktop_shortcut"):
-            AsyncCall(self.create_shortcut, None, True)
+            await self.create_shortcut_async(desktop=True)
         if self.config.get("create_menu_shortcut"):
-            AsyncCall(self.create_shortcut, None)
+            await self.create_shortcut_async(desktop=False)
 
         # Save game to trigger a game-updated signal,
         # but take care not to create a blank game
         if game_id:
             game = Game(game_id)
             if self.config.get("create_steam_shortcut"):
-                AsyncCall(steam_shortcut.create_shortcut, None, game)
+                await steam_shortcut.create_shortcut_async(game)
             game.save()
 
         self.install_in_progress = False
@@ -908,16 +897,16 @@ class InstallerWindow(ModelessDialog,
         """Remove urgency hint (flashing indicator) when window receives focus"""
         self.set_urgency_hint(False)
 
-    def create_shortcut(self, desktop=False):
+    async def create_shortcut_async(self, desktop=False):
         """Create desktop or global menu shortcuts."""
         game_slug = self.interpreter.installer.game_slug
         game_id = self.interpreter.installer.game_id
         game_name = self.interpreter.installer.game_name
 
         if desktop:
-            xdgshortcuts.create_launcher(game_slug, game_id, game_name, desktop=True)
+            await xdgshortcuts.create_launcher_async(game_slug, game_id, game_name, desktop=True)
         else:
-            xdgshortcuts.create_launcher(game_slug, game_id, game_name, menu=True)
+            await xdgshortcuts.create_launcher_async(game_slug, game_id, game_name, menu=True)
 
     # Buttons
     def display_continue_button(self, handler,

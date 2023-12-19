@@ -400,26 +400,27 @@ class GameActions(BaseGameActions):
             else:
                 dialogs.NoticeDialog(_("Can't open %s \nThe folder doesn't exist.") % path)
 
-    def on_create_menu_shortcut(self, *_args):
+    async def on_create_menu_shortcut(self, *_args):
         """Add the selected game to the system's Games menu."""
         for game in self.games:
             launch_config_name = self._select_game_launch_config_name(game)
             if launch_config_name is not None:
-                xdgshortcuts.create_launcher(game.slug, game.id, game.name, menu=True)
+                await xdgshortcuts.create_launcher_async(game.slug, game.id, game.name, menu=True)
 
-    def on_create_steam_shortcut(self, *_args):
+    async def on_create_steam_shortcut(self, *_args):
         """Add the selected game to steam as a nonsteam-game."""
         for game in self.games:
             launch_config_name = self._select_game_launch_config_name(game)
             if launch_config_name is not None:
-                steam_shortcut.create_shortcut(game, launch_config_name)
+                await steam_shortcut.create_shortcut_async(game, launch_config_name)
 
-    def on_create_desktop_shortcut(self, *_args):
+    async def on_create_desktop_shortcut(self, *_args):
         """Create a desktop launcher for the selected game."""
         for game in self.games:
             launch_config_name = self._select_game_launch_config_name(game)
             if launch_config_name is not None:
-                xdgshortcuts.create_launcher(game.slug, game.id, game.name, launch_config_name, desktop=True)
+                await xdgshortcuts.create_launcher_async(game.slug, game.id, game.name,
+                                                         launch_config_name, desktop=True)
 
     def on_remove_menu_shortcut(self, *_args):
         """Remove an XDG menu shortcut"""

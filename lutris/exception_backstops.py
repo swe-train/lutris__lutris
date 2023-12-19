@@ -128,32 +128,36 @@ def init_exception_backstops():
     but signals and emission hooks will remain connected.
     """
 
-    def _error_handling_connect(self: Gtk.Widget, signal_spec: str, handler, *args, **kwargs):
+    def _error_handling_connect(self: Gtk.Widget, signal_spec: str, handler, *args,
+                                error_result=None, async_result=None,
+                                **kwargs):
         error_wrapper = _create_error_wrapper(handler, f"signal '{signal_spec}'",
-                                              error_result=None,
-                                              async_result=None,
+                                              error_result=error_result,
+                                              async_result=async_result,
                                               error_method_name="on_signal_error",
                                               connected_object=self)
         return _original_connect(self, signal_spec, error_wrapper, *args, **kwargs)
 
-    def _error_handling_add_emission_hook(emitting_type, signal_spec, handler, *args, **kwargs):
+    def _error_handling_add_emission_hook(emitting_type, signal_spec, handler, *args,
+                                          error_result=True, async_result=True,
+                                          **kwargs):
         error_wrapper = _create_error_wrapper(handler, f"emission hook '{emitting_type}.{signal_spec}'",
-                                              error_result=True,  # stay attached
-                                              async_result=True,
+                                              error_result=error_result,
+                                              async_result=async_result,
                                               error_method_name="on_emission_hook_error")
         return _original_add_emission_hook(emitting_type, signal_spec, error_wrapper, *args, **kwargs)
 
-    def _error_handling_idle_add(handler, *args, **kwargs):
+    def _error_handling_idle_add(handler, *args, error_result=False, async_result=False, **kwargs):
         error_wrapper = _create_error_wrapper(handler, "idle function",
-                                              error_result=False,  # stop calling idle func
-                                              async_result=True,  # keep calling the idle func
+                                              error_result=error_result,
+                                              async_result=async_result,
                                               error_method_name="on_idle_error")
         return _original_idle_add(error_wrapper, *args, **kwargs)
 
-    def _error_handling_timeout_add(interval, handler, *args, **kwargs):
+    def _error_handling_timeout_add(interval, handler, *args, error_result=False, async_result=False, **kwargs):
         error_wrapper = _create_error_wrapper(handler, "timeout function",
-                                              error_result=False,  # stop calling timeout fund
-                                              async_result=False,  # stop calling the timeout func
+                                              error_result=error_result,
+                                              async_result=async_result,
                                               error_method_name="on_timeout_error")
         return _original_timeout_add(interval, error_wrapper, *args, **kwargs)
 

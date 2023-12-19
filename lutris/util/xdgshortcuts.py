@@ -10,6 +10,7 @@ from gi.repository import GLib
 from lutris.api import format_installer_url
 from lutris.settings import CACHE_DIR
 from lutris.util import system
+from lutris.util.jobs import call_async
 from lutris.util.linux import LINUX_SYSTEM
 from lutris.util.log import logger
 
@@ -53,61 +54,63 @@ def get_xdg_basename(game_slug, game_id, base_dir=None):
     return "net.lutris.{}-{}.desktop".format(game_slug, game_id)
 
 
-def create_launcher(game_slug, game_id, game_name, launch_config_name=None, desktop=False, menu=False):
+async def create_launcher_async(game_slug, game_id, game_name, launch_config_name=None, desktop=False, menu=False):
     """Create a .desktop file."""
-    desktop_dir = GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_DESKTOP)
-    lutris_executable = get_lutris_executable()
+    def create_launcher():
+        desktop_dir = GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_DESKTOP)
+        lutris_executable = get_lutris_executable()
 
-    url = format_installer_url({
-        "action": "rungameid",
-        "game_slug": game_id,
-        "launch_config_name": launch_config_name
-    })
+        url = format_installer_url({
+            "action": "rungameid",
+            "game_slug": game_id,
+            "launch_config_name": launch_config_name
+        })
 
-    launcher_content = dedent(
-        """
-        [Desktop Entry]
-        Type=Application
-        Name={}
-        Icon={}
-        Exec=env LUTRIS_SKIP_INIT=1 {} {}
-        Categories=Game
-        """.format(
-            game_name,
-            "lutris_{}".format(game_slug),
-            lutris_executable,
-            shlex.quote(url)
+        launcher_content = dedent(
+            """
+            [Desktop Entry]
+            Type=Application
+            Name={}
+            Icon={}
+            Exec=env LUTRIS_SKIP_INIT=1 {} {}
+            Categories=Game
+            """.format(
+                game_name,
+                "lutris_{}".format(game_slug),
+                lutris_executable,
+                shlex.quote(url)
+            )
         )
-    )
 
-    launcher_filename = get_xdg_basename(game_slug, game_id)
-    tmp_launcher_path = os.path.join(CACHE_DIR, launcher_filename)
-    with open(tmp_launcher_path, "w", encoding='utf-8') as tmp_launcher:
-        tmp_launcher.write(launcher_content)
-        tmp_launcher.close()
-    os.chmod(
-        tmp_launcher_path,
-        stat.S_IREAD
-        | stat.S_IWRITE
-        | stat.S_IEXEC
-        | stat.S_IRGRP
-        | stat.S_IWGRP
-        | stat.S_IXGRP,
-    )
+        launcher_filename = get_xdg_basename(game_slug, game_id)
+        tmp_launcher_path = os.path.join(CACHE_DIR, launcher_filename)
+        with open(tmp_launcher_path, "w", encoding='utf-8') as tmp_launcher:
+            tmp_launcher.write(launcher_content)
+            tmp_launcher.close()
+        os.chmod(
+            tmp_launcher_path,
+            stat.S_IREAD
+            | stat.S_IWRITE
+            | stat.S_IEXEC
+            | stat.S_IRGRP
+            | stat.S_IWGRP
+            | stat.S_IXGRP,
+        )
 
-    if desktop:
-        os.makedirs(desktop_dir, exist_ok=True)
-        launcher_path = os.path.join(desktop_dir, launcher_filename)
-        logger.debug("Creating Desktop icon in %s", launcher_path)
-        shutil.copy(tmp_launcher_path, launcher_path)
-    if menu:
-        user_dir = os.path.expanduser("~/.local/share") if LINUX_SYSTEM.is_flatpak() else GLib.get_user_data_dir()
-        menu_path = os.path.join(user_dir, "applications")
-        os.makedirs(menu_path, exist_ok=True)
-        launcher_path = os.path.join(menu_path, launcher_filename)
-        logger.debug("Creating menu launcher in %s", launcher_path)
-        shutil.copy(tmp_launcher_path, launcher_path)
-    os.remove(tmp_launcher_path)
+        if desktop:
+            os.makedirs(desktop_dir, exist_ok=True)
+            launcher_path = os.path.join(desktop_dir, launcher_filename)
+            logger.debug("Creating Desktop icon in %s", launcher_path)
+            shutil.copy(tmp_launcher_path, launcher_path)
+        if menu:
+            user_dir = os.path.expanduser("~/.local/share") if LINUX_SYSTEM.is_flatpak() else GLib.get_user_data_dir()
+            menu_path = os.path.join(user_dir, "applications")
+            os.makedirs(menu_path, exist_ok=True)
+            launcher_path = os.path.join(menu_path, launcher_filename)
+            logger.debug("Creating menu launcher in %s", launcher_path)
+            shutil.copy(tmp_launcher_path, launcher_path)
+        os.remove(tmp_launcher_path)
+    await call_async(create_launcher)
 
 
 def get_launcher_path(game_slug, game_id):

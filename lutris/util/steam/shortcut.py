@@ -7,6 +7,7 @@ import shutil
 
 from lutris.api import format_installer_url
 from lutris.util import resources, system
+from lutris.util.jobs import call_async
 from lutris.util.log import logger
 from lutris.util.steam import vdf
 from lutris.util.steam.config import convert_steamid64_to_steamid32, get_active_steamid64, get_user_data_dirs
@@ -76,28 +77,31 @@ def is_steam_game(game):
     return game.runner_name == "steam"
 
 
-def create_shortcut(game, launch_config_name=None):
-    if is_steam_game(game):
-        logger.warning("Not updating shortcut for Steam game")
-        return
-    logger.info("Creating Steam shortcut for %s", game)
-    shortcut_path = get_shortcuts_vdf_path()
-    if os.path.exists(shortcut_path):
-        with open(shortcut_path, "rb") as shortcut_file:
-            shortcuts = vdf.binary_loads(shortcut_file.read())['shortcuts'].values()
-    else:
-        shortcuts = []
+async def create_shortcut_async(game, launch_config_name=None):
+    def create_shortcut():
+        if is_steam_game(game):
+            logger.warning("Not updating shortcut for Steam game")
+            return
+        logger.info("Creating Steam shortcut for %s", game)
+        shortcut_path = get_shortcuts_vdf_path()
+        if os.path.exists(shortcut_path):
+            with open(shortcut_path, "rb") as shortcut_file:
+                shortcuts = vdf.binary_loads(shortcut_file.read())['shortcuts'].values()
+        else:
+            shortcuts = []
 
-    shortcuts = list(shortcuts) + [generate_shortcut(game, launch_config_name)]
+        shortcuts = list(shortcuts) + [generate_shortcut(game, launch_config_name)]
 
-    updated_shortcuts = {
-        'shortcuts': {
-            str(index): elem for index, elem in enumerate(shortcuts)
+        updated_shortcuts = {
+            'shortcuts': {
+                str(index): elem for index, elem in enumerate(shortcuts)
+            }
         }
-    }
-    with open(shortcut_path, "wb") as shortcut_file:
-        shortcut_file.write(vdf.binary_dumps(updated_shortcuts))
-    set_artwork(game)
+        with open(shortcut_path, "wb") as shortcut_file:
+            shortcut_file.write(vdf.binary_dumps(updated_shortcuts))
+        set_artwork(game)
+
+    await call_async(create_shortcut)
 
 
 def remove_shortcut(game):
