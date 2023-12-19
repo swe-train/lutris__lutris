@@ -7,7 +7,7 @@ from lutris import runners, services
 from lutris.database.games import get_game_for_service
 from lutris.game import Game
 from lutris.game_actions import get_game_actions
-from lutris.gui.dialogs import ErrorDialog, async_execute
+from lutris.gui.dialogs import async_execute
 from lutris.gui.widgets.contextual_menu import update_action_widget_visibility
 from lutris.util.strings import gtk_safe
 

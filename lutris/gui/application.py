@@ -57,7 +57,6 @@ from lutris.util.steam.config import get_steamapps_dirs
 from lutris.util.savesync import show_save_stats, upload_save, save_check
 from lutris.services import get_enabled_services
 from lutris.database.services import ServiceGameCollection
-from lutris.util.jobs import AsyncCall
 from lutris.exception_backstops import init_exception_backstops
 
 from .lutriswindow import LutrisWindow
