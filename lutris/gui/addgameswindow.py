@@ -243,7 +243,7 @@ class AddGamesWindow(ModelessDialog):  # pylint: disable=too-many-public-methods
         self.text_query = entry.get_text().strip()
         self.search_timer_id = GLib.timeout_add(750, self.update_search_results)
 
-    def update_search_results(self):
+    async def update_search_results(self):
         # Don't start a search while another is going; defer it instead.
         if self.search_spinner.get_visible():
             self.search_timer_id = GLib.timeout_add(750, self.update_search_results)
@@ -251,14 +251,10 @@ class AddGamesWindow(ModelessDialog):  # pylint: disable=too-many-public-methods
 
         self.search_timer_id = None
 
-        if self.text_query:
-            async_execute(self.search_games_async(self.text_query), parent=self)
-
-    async def search_games_async(self, text_query):
         self.search_spinner.show()
         self.search_spinner.start()
         try:
-            api_games = await call_async(api.search_games, text_query)
+            api_games = await call_async(api.search_games, self.text_query)
             self.show_search_results(api_games)
         finally:
             self.search_spinner.stop()

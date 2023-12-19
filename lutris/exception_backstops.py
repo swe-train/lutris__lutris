@@ -1,9 +1,11 @@
+import asyncio
+from asyncio import iscoroutine
 from functools import wraps
 from typing import Any, Callable, Iterable
 
 from gi.repository import Gio, GLib, GObject, Gtk
 
-from lutris.gui.dialogs import ErrorDialog
+from lutris.gui.dialogs import ErrorDialog, async_execute
 from lutris.util.log import logger
 
 
@@ -66,26 +68,39 @@ def _get_error_parent(error_objects: Iterable) -> Gtk.Window:
 
 
 def _create_error_wrapper(handler: Callable, handler_name: str,
-                          error_result: Any,
+                          interrupted_result: Any,
                           error_method_name: str,
                           connected_object: Any = None):
     """Wraps a handler function in an error handler that will log and then report
-    any exceptions, then return the 'error_result'."""
+    any exceptions, then return the 'interrupted_result'. If the handler reutrns a co-routine
+    we schedule it, and also return 'interrupted_result'."""
 
     handler_object = handler.__self__ if hasattr(handler, "__self__") else None
 
-    def error_wrapper(*args, **kwargs):
-        try:
-            return handler(*args, **kwargs)
-        except Exception as ex:
-            logger.exception("Error handling %s: %s", handler_name, ex)
+    def on_error(error: Exception) -> None:
+        logger.exception("Error handling %s: %s", handler_name, error)
 
-            if handler_object and hasattr(handler_object, error_method_name):
-                error_method = getattr(handler_object, error_method_name)
-                error_method(ex)
-            else:
-                ErrorDialog(ex, parent=_get_error_parent([handler_object, connected_object]))
-            return error_result
+        if handler_object and hasattr(handler_object, error_method_name):
+            error_method = getattr(handler_object, error_method_name)
+            error_method(error)
+        else:
+            ErrorDialog(error, parent=_get_error_parent([handler_object, connected_object]))
+
+    def on_future_error(fut):
+        err = fut.exception()
+        if err:
+            on_error(err)
+
+    def error_wrapper(*args, **kwargs) -> Any:
+        try:
+            result = handler(*args, **kwargs)
+            if iscoroutine(result):
+                task = asyncio.create_task(result)
+                task.add_done_callback(on_future_error)
+                return interrupted_result
+        except Exception as ex:
+            on_error(ex)
+            return interrupted_result
 
     return error_wrapper
 
@@ -113,26 +128,26 @@ def init_exception_backstops():
 
     def _error_handling_connect(self: Gtk.Widget, signal_spec: str, handler, *args, **kwargs):
         error_wrapper = _create_error_wrapper(handler, f"signal '{signal_spec}'",
-                                              error_result=None,
+                                              interrupted_result=None,
                                               error_method_name="on_signal_error",
                                               connected_object=self)
         return _original_connect(self, signal_spec, error_wrapper, *args, **kwargs)
 
     def _error_handling_add_emission_hook(emitting_type, signal_spec, handler, *args, **kwargs):
         error_wrapper = _create_error_wrapper(handler, f"emission hook '{emitting_type}.{signal_spec}'",
-                                              error_result=True,  # stay attached
+                                              interrupted_result=True,  # stay attached
                                               error_method_name="on_emission_hook_error")
         return _original_add_emission_hook(emitting_type, signal_spec, error_wrapper, *args, **kwargs)
 
     def _error_handling_idle_add(handler, *args, **kwargs):
         error_wrapper = _create_error_wrapper(handler, "idle function",
-                                              error_result=False,  # stop calling idle func
+                                              interrupted_result=False,  # stop calling idle func
                                               error_method_name="on_idle_error")
         return _original_idle_add(error_wrapper, *args, **kwargs)
 
     def _error_handling_timeout_add(interval, handler, *args, **kwargs):
         error_wrapper = _create_error_wrapper(handler, "timeout function",
-                                              error_result=False,  # stop calling timeout fund
+                                              interrupted_result=False,  # stop calling timeout fund
                                               error_method_name="on_timeout_error")
         return _original_timeout_add(interval, error_wrapper, *args, **kwargs)
 
