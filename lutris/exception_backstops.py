@@ -5,7 +5,7 @@ from typing import Any, Callable, Iterable
 
 from gi.repository import Gio, GLib, GObject, Gtk
 
-from lutris.gui.dialogs import ErrorDialog, async_execute
+from lutris.gui.dialogs import ErrorDialog
 from lutris.util.log import logger
 
 

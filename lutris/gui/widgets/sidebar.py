@@ -13,7 +13,7 @@ from lutris.gui.config.edit_category_games import EditCategoryGamesDialog
 from lutris.gui.config.runner import RunnerConfigDialog
 from lutris.gui.config.runner_box import RunnerBox
 from lutris.gui.config.services_box import ServicesBox
-from lutris.gui.dialogs import ErrorDialog, async_execute
+from lutris.gui.dialogs import ErrorDialog
 from lutris.gui.dialogs.runner_install import RunnerInstallDialog
 from lutris.gui.widgets.utils import has_stock_icon
 from lutris.installer.interpreter import ScriptInterpreter
@@ -232,9 +232,9 @@ class RunnerSidebarRow(SidebarRow):
         entries.append(("emblem-system-symbolic", _("Configure"), self.on_configure_runner, "configure"))
         return entries
 
-    def on_run_runner(self, *_args):
+    async def on_run_runner(self, *_args):
         """Runs the runner without a game."""
-        async_execute(self.runner.run_async(self.get_toplevel()))
+        await self.runner.run_async(self.get_toplevel())
 
     def on_configure_runner(self, *_args):
         """Show runner configuration"""

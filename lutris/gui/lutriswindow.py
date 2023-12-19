@@ -17,7 +17,6 @@ from lutris.game import Game
 from lutris.gui import dialogs
 from lutris.gui.addgameswindow import AddGamesWindow
 from lutris.gui.config.preferences_dialog import PreferencesDialog
-from lutris.gui.dialogs import async_execute
 from lutris.gui.dialogs.delegates import DialogInstallUIDelegate, DialogLaunchUIDelegate
 from lutris.gui.dialogs.game_import import ImportGameDialog
 from lutris.gui.download_queue import DownloadQueue
@@ -1075,11 +1074,8 @@ class LutrisWindow(Gtk.ApplicationWindow,
         self.emit("view-updated")
         return True
 
-    def on_game_activated(self, view, game_id):
+    async def on_game_activated(self, view, game_id):
         """Handles view activations (double click, enter press)"""
-        async_execute(self._activate_game_async(game_id))
-
-    async def _activate_game_async(self, game_id):
         if self.service:
             logger.debug("Looking up %s game %s", self.service.id, game_id)
             db_game = games_db.get_game_for_service(self.service.id, game_id)

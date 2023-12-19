@@ -5,7 +5,7 @@ from gi.repository import Gio, GLib, Gtk
 
 from lutris import api, sysoptions
 from lutris.gui.config.add_game_dialog import AddGameDialog
-from lutris.gui.dialogs import ErrorDialog, ModelessDialog, async_execute
+from lutris.gui.dialogs import ErrorDialog, ModelessDialog
 from lutris.gui.dialogs.game_import import ImportGameDialog
 from lutris.gui.widgets.common import FileChooserEntry
 from lutris.gui.widgets.navigation_stack import NavigationStack
