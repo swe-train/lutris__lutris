@@ -15,7 +15,6 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-import asyncio
 import json
 import logging
 import os
@@ -25,6 +24,7 @@ import tempfile
 
 from datetime import datetime, timedelta
 from gettext import gettext as _
+from typing import Callable
 
 import gi
 
@@ -57,7 +57,7 @@ from lutris.util.steam.config import get_steamapps_dirs
 from lutris.util.savesync import show_save_stats, upload_save, save_check
 from lutris.services import get_enabled_services
 from lutris.database.services import ServiceGameCollection
-from lutris.exception_backstops import init_exception_backstops
+from lutris.exception_backstops import init_exception_backstops, async_execute
 
 from .lutriswindow import LutrisWindow
 
@@ -548,7 +548,7 @@ class Application(Gtk.Application):
         # install Runner
         if options.contains("install-runner"):
             runner = options.lookup_value("install-runner").get_string()
-            self.async_execute(self.install_runner_async(runner))
+            self.async_execute(self.install_runner_async, runner)
             return 0
 
         # Uninstall Runner
@@ -721,7 +721,7 @@ class Application(Gtk.Application):
             service_game = ServiceGameCollection.get_game(service, appid)
             if service_game:
                 service = get_enabled_services()[service]()
-                self.async_execute(service.install_game_async(service_game))
+                self.async_execute(service.install_game_async, service_game)
                 return 0
 
         if action == "cancel":
@@ -1096,19 +1096,14 @@ Also, check that the version specified is in the correct format.
         else:
             print(f"Runner '{runner_name}' cannot be uninstalled.")
 
-    def async_execute(self, coroutine):
-        def on_completed(completed):
-            error = completed.exception()
-            if error:
-                logger.exception("Error occurred %s:", error)
+    def async_execute(self, func: Callable, *args, **kwargs):
+        def wrapped():
+            func(*args, **kwargs)
             self.release()
 
-        # Keep the application upon until the co-routine
-        # completes.
+        # Keep the application upon until the function completes.
         self.hold()
-        future = asyncio.create_task(coroutine)
-        future.add_done_callback(on_completed)
-        return future
+        async_execute(wrapped)
 
     def do_shutdown(self):  # pylint: disable=arguments-differ
         logger.info("Shutting down Lutris")
