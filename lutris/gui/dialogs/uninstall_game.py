@@ -6,8 +6,9 @@ from typing import Callable, Dict, Iterable, List, Set
 from gi.repository import GObject, Gtk
 
 from lutris.database.games import get_games
+from lutris.exception_backstops import async_execute
 from lutris.game import Game
-from lutris.gui.dialogs import QuestionDialog, async_execute
+from lutris.gui.dialogs import QuestionDialog
 from lutris.gui.widgets.gi_composites import GtkTemplate
 from lutris.util import datapath
 from lutris.util.strings import get_natural_sort_key, gtk_safe, human_size
@@ -105,7 +106,7 @@ class UninstallMultipleGamesDialog(Gtk.Dialog):
             self.uninstall_game_list.add(row)
 
         if games_to_size:
-            async_execute(self._update_folder_sizes_async(games_to_size))
+            async_execute(self._update_folder_sizes_async, games_to_size)
 
     def update_subtitle(self) -> None:
         """Updates the dialog subtitle according to what games are being removed."""

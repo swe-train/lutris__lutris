@@ -1,5 +1,4 @@
 """Commonly used dialogs"""
-import asyncio
 import os
 from gettext import gettext as _
 from typing import Callable
@@ -286,16 +285,6 @@ class ErrorDialog(Gtk.MessageDialog):
 
         self.run()
         self.destroy()
-
-
-def async_execute(coroutine, parent=None):
-    def report_error(fut):
-        err = fut.exception()
-        if err:
-            ErrorDialog(err, parent=parent)
-
-    future = asyncio.create_task(coroutine)
-    future.add_done_callback(report_error)
 
 
 class QuestionDialog(Gtk.MessageDialog):

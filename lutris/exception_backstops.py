@@ -46,6 +46,17 @@ def watch_game_errors(game_stop_result, game=None):
     return inner_decorator
 
 
+def async_execute(func: Callable, *args, handler_widget: Gtk.Widget = None, **kwargs) -> None:
+    """This runs the function given with the arguments given, but with the error
+    handling we use for callbacks. 'handler_widget', if provided, can provide the parent
+    for the error dialog, if one is shown. The target of the func can also provide this."""
+    wrapped = _create_error_wrapper(func,
+                                    handler_name=f"function '{func.__name__}",
+                                    connected_object=handler_widget,
+                                    error_result=None, async_result=None)
+    wrapped(*args, **kwargs)
+
+
 def _get_error_parent(error_objects: Iterable) -> Gtk.Window:
     """Obtains a top-level window to use as the parent of an
     error, by examining s list of objects. Any that are None
@@ -70,18 +81,17 @@ def _get_error_parent(error_objects: Iterable) -> Gtk.Window:
 def _create_error_wrapper(handler: Callable, handler_name: str,
                           error_result: Any,
                           async_result: Any,
-                          error_method_name: str,
+                          error_method_name: str = None,
                           connected_object: Any = None):
     """Wraps a handler function in an error handler that will log and then report
     any exceptions, then return the 'error_result'. If the handler reutrns a co-routine
     we schedule it, and also return 'async_result'."""
 
-    handler_object = handler.__self__ if hasattr(handler, "__self__") else None
-
     def on_error(error: Exception) -> None:
         logger.exception("Error handling %s: %s", handler_name, error)
+        handler_object = handler.__self__ if hasattr(handler, "__self__") else None
 
-        if handler_object and hasattr(handler_object, error_method_name):
+        if handler_object and error_method_name and hasattr(handler_object, error_method_name):
             error_method = getattr(handler_object, error_method_name)
             error_method(error)
         else:
