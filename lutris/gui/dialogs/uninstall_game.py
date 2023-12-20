@@ -106,7 +106,7 @@ class UninstallMultipleGamesDialog(Gtk.Dialog):
             self.uninstall_game_list.add(row)
 
         if games_to_size:
-            async_execute(self._update_folder_sizes_async, games_to_size)
+            async_execute(self._update_folder_sizes_async(games_to_size))
 
     def update_subtitle(self) -> None:
         """Updates the dialog subtitle according to what games are being removed."""

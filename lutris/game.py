@@ -276,9 +276,9 @@ class Game(GObject.Object):
         if not handled:
             self.emit("game-unhandled-error", error)
 
-    def async_execute(self, func: Callable, *args, **kwargs):
+    def async_execute(self, coroutine):
         """Cause a coroutine to execute, but handle any errors from it with signal_errors()."""
-        async_execute(func, handler_widget=self, *args, **kwargs)
+        async_execute(coroutine, error_objects=[self])
 
     def on_signal_error(self, error):
         self.signal_error(error)
@@ -694,7 +694,7 @@ class Game(GObject.Object):
         return True
 
     def launch(self, launch_ui_delegate):
-        self.async_execute(self.launch_async, launch_ui_delegate)
+        self.async_execute(self.launch_async(launch_ui_delegate))
 
     async def launch_async(self, launch_ui_delegate):
         """Request launching a game. The game may not be installed yet."""
@@ -780,7 +780,7 @@ class Game(GObject.Object):
                 # If we still can't kill everything, we'll still say we stopped it.
                 self.stop_game()
 
-        self.async_execute(death_watch_async)
+        self.async_execute(death_watch_async())
 
     def kill_processes(self, sig):
         """Sends a signal to a process list, logging errors."""
@@ -881,7 +881,7 @@ class Game(GObject.Object):
         logger.info("Stopping %s", self)
 
         if self.game_thread:
-            self.async_execute(call_async, self.game_thread.stop)
+            self.async_execute(call_async(self.game_thread.stop))
         self.stop_game()
 
     def on_game_quit(self):

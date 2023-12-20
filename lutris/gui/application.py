@@ -24,7 +24,6 @@ import tempfile
 
 from datetime import datetime, timedelta
 from gettext import gettext as _
-from typing import Callable
 
 import gi
 
@@ -548,7 +547,7 @@ class Application(Gtk.Application):
         # install Runner
         if options.contains("install-runner"):
             runner = options.lookup_value("install-runner").get_string()
-            self.async_execute(self.install_runner_async, runner)
+            self.async_execute(self.install_runner_async(runner))
             return 0
 
         # Uninstall Runner
@@ -721,7 +720,7 @@ class Application(Gtk.Application):
             service_game = ServiceGameCollection.get_game(service, appid)
             if service_game:
                 service = get_enabled_services()[service]()
-                self.async_execute(service.install_game_async, service_game)
+                self.async_execute(service.install_game_async(service_game))
                 return 0
 
         if action == "cancel":
@@ -1096,14 +1095,11 @@ Also, check that the version specified is in the correct format.
         else:
             print(f"Runner '{runner_name}' cannot be uninstalled.")
 
-    def async_execute(self, func: Callable, *args, **kwargs):
-        def wrapped():
-            func(*args, **kwargs)
-            self.release()
-
+    def async_execute(self, coroutine):
         # Keep the application upon until the function completes.
         self.hold()
-        async_execute(wrapped)
+        task = async_execute(coroutine, error_objects=[self])
+        task.add_done_callback(lambda *_args: self.release())
 
     def do_shutdown(self):  # pylint: disable=arguments-differ
         logger.info("Shutting down Lutris")
