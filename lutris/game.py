@@ -9,7 +9,6 @@ import signal
 import subprocess
 import time
 from gettext import gettext as _
-from typing import Callable
 
 from gi.repository import GLib, GObject, Gtk
 

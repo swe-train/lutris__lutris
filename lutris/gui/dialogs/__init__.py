@@ -13,7 +13,7 @@ from gi.repository import Gdk, GLib, GObject, Gtk
 from lutris import api, settings
 from lutris.gui.widgets.log_text_view import LogTextView
 from lutris.util import datapath
-from lutris.util.jobs import AsyncCall
+from lutris.util.jobs import AsyncCall, call_async
 from lutris.util.log import logger
 from lutris.util.strings import gtk_safe
 
@@ -486,9 +486,9 @@ class ClientLoginDialog(GtkBuilderDialog):
         else:
             self.username_entry.grab_focus()
 
-    def on_connect(self, widget):  # pylint: disable=unused-argument
+    async def on_connect(self, widget):  # pylint: disable=unused-argument
         username, password = self.get_credentials()
-        token = api.connect(username, password)
+        token = await call_async(api.connect, username, password)
         if not token:
             NoticeDialog(_("Login failed"), parent=self.parent)
         else:

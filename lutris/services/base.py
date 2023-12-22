@@ -11,6 +11,7 @@ from lutris.config import write_game_config
 from lutris.database import sql
 from lutris.database.games import add_game, get_game_by_field, get_games
 from lutris.database.services import ServiceGameCollection
+from lutris.exception_backstops import async_execute
 from lutris.game import Game
 from lutris.gui.dialogs import NoticeDialog
 from lutris.gui.dialogs.webconnect_dialog import DEFAULT_USER_AGENT, WebConnectDialog
@@ -363,16 +364,26 @@ class OnlineService(BaseService):
 
     def login(self, parent=None):
         if self.client_installer and not self.is_launcher_installed():
+            async def start_client_installer_async():
+                application = Gio.Application.get_default()
+                installers = call_async(get_installers, game_slug=self.client_installer)
+                application.show_installer_window(installers)
+
             NoticeDialog(
                 _("This service requires a game launcher. The following steps will install it.\n"
                   "Once the client is installed, you can login to %s.") % self.name)
-            application = Gio.Application.get_default()
-            installers = get_installers(game_slug=self.client_installer)
-            application.show_installer_window(installers)
+            async_execute(start_client_installer_async())
             return
         logger.debug("Connecting to %s", self.name)
         dialog = WebConnectDialog(self, parent)
         dialog.run()
+
+    async def login_complete_async(self, content):
+        self.login_callback(content)
+
+    def login_callback(self, url):
+        """Called after the user has logged in successfully"""
+        self.emit("service-login")
 
     def is_authenticated(self):
         """Return whether the service is authenticated"""

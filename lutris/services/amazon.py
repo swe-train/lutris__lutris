@@ -25,6 +25,7 @@ from lutris.services.service_media import ServiceMedia
 from lutris.util import system
 from lutris.util.amazon.sds_proto2 import CompressionAlgorithm, HashAlgorithm, Manifest, ManifestHeader
 from lutris.util.http import HTTPError, Request
+from lutris.util.jobs import call_async
 from lutris.util.log import logger
 from lutris.util.strings import slugify
 
@@ -128,7 +129,7 @@ class AmazonService(OnlineService):
 
         return "https://amazon.com/ap/signin?" + urlencode(arguments)
 
-    def login_callback(self, url):
+    async def login_complete_async(self, url):
         """Get authentication token from Amazon"""
         if url.find("openid.oa2.authorization_code") > 0:
             logger.info("Got authorization code")
@@ -138,10 +139,10 @@ class AmazonService(OnlineService):
             query = parse_qs(parsed.query)
             auth_code = query["openid.oa2.authorization_code"][0]
 
-            user_data = self.register_device(auth_code)
+            user_data = await call_async(self.register_device, auth_code)
             user_data["token_obtain_time"] = time.time()
 
-            self.save_user_data(user_data)
+            await call_async(self.save_user_data, user_data)
 
             self.emit("service-login")
 

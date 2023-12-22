@@ -98,10 +98,6 @@ class HumbleBundleService(OnlineService):
         else:
             return super().login(parent=parent)
 
-    def login_callback(self, url):
-        """Called after the user has logged in successfully"""
-        self.emit("service-login")
-
     def is_connected(self):
         """This doesn't actually check if the authentication
         is valid like the GOG service does.

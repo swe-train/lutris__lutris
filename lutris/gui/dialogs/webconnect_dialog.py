@@ -3,6 +3,9 @@ import os
 from gettext import gettext as _
 
 import gi
+
+from lutris.exception_backstops import async_execute
+
 try:
     gi.require_version("WebKit2", "4.1")
 except ValueError:
@@ -79,13 +82,13 @@ class WebConnectDialog(ModalDialog):
                     resource = widget.get_main_resource()
                     resource.get_data(None, self._get_response_data_finish, None)
                 else:
-                    self.service.login_callback(url)
+                    async_execute(self.service.login_complete_async(url))
                     self.destroy()
         return True
 
     def _get_response_data_finish(self, resource, result, user_data=None):
         html_response = resource.get_data_finish(result)
-        self.service.login_callback(html_response)
+        async_execute(self.service.login_complete_async(html_response))
         self.destroy()
 
     def on_webview_popup(self, widget, navigation_action):

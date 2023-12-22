@@ -121,10 +121,6 @@ class ItchIoService(OnlineService):
         "other"
     )
 
-    def login_callback(self, url):
-        """Called after the user has logged in successfully"""
-        self.emit("service-login")
-
     def is_connected(self):
         """Check if service is connected and can call the API"""
         if not self.is_authenticated():

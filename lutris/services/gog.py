@@ -18,6 +18,7 @@ from lutris.services.service_game import ServiceGame
 from lutris.services.service_media import ServiceMedia
 from lutris.util import i18n, system
 from lutris.util.http import HTTPError, Request, UnauthorizedAccess
+from lutris.util.jobs import call_async
 from lutris.util.log import logger
 from lutris.util.strings import human_size, slugify
 
@@ -139,8 +140,9 @@ class GOGService(OnlineService):
         self.match_games()
         return games
 
-    def login_callback(self, url):
-        return self.request_token(url)
+    async def login_complete_async(self, content):
+        await call_async(self.request_token, content)
+        self.emit("service-login")
 
     def request_token(self, url="", refresh_token=""):
         """Get authentication token from GOG"""
@@ -180,8 +182,6 @@ class GOGService(OnlineService):
         token = request.json
         with open(self.token_path, "w", encoding='utf-8') as token_file:
             token_file.write(json.dumps(token))
-        if not refresh_token:
-            self.emit("service-login")
 
     def load_token(self):
         """Load token from disk"""
