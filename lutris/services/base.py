@@ -379,10 +379,6 @@ class OnlineService(BaseService):
         dialog.run()
 
     async def login_complete_async(self, content):
-        self.login_callback(content)
-
-    def login_callback(self, url):
-        """Called after the user has logged in successfully"""
         self.emit("service-login")
 
     def is_authenticated(self):

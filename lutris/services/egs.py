@@ -18,6 +18,7 @@ from lutris.services.service_game import ServiceGame
 from lutris.services.service_media import ServiceMedia
 from lutris.util import system
 from lutris.util.egs.egs_launcher import EGSLauncher
+from lutris.util.jobs import call_async
 from lutris.util.log import logger
 from lutris.util.strings import slugify
 
@@ -198,7 +199,7 @@ class EpicGamesStoreService(OnlineService):
     def is_connected(self):
         return self.is_authenticated()
 
-    def login_callback(self, content):
+    async def login_complete_async(self, content):
         """Once the user logs in in a browser window, Epic redirects
         to a page containing a Session ID which we can use to finish the authentication.
         Store session ID and exchange token to auth file"""
@@ -207,7 +208,7 @@ class EpicGamesStoreService(OnlineService):
         content_json = json.loads(content.decode())
         session_id = content_json["authorizationCode"]
 
-        self.start_session(authorization_code=session_id)
+        await call_async(self.start_session, authorization_code=session_id)
         self.emit("service-login")
 
     def resume_session(self):

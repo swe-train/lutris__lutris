@@ -16,6 +16,7 @@ from lutris.installer import get_installers_async
 from lutris.services.base import OnlineService
 from lutris.services.service_game import ServiceGame
 from lutris.services.service_media import ServiceMedia
+from lutris.util.jobs import call_async
 from lutris.util.log import logger
 from lutris.util.strings import slugify
 from lutris.util.ubisoft import consts
@@ -112,15 +113,15 @@ class UbisoftConnectService(OnlineService):
     def auth_lost(self):
         self.emit("service-logout")
 
-    def login_callback(self, credentials):
+    async def login_complete_async(self, content):
         """Called after the user has logged in successfully"""
-        url = credentials[len("https://connect.ubisoft.com/change_domain/"):]
+        url = content[len("https://connect.ubisoft.com/change_domain/"):]
         unquoted_url = unquote(url)
         storage_jsons = json.loads("[" + unquoted_url + "]")
-        user_data = self.client.authorise_with_local_storage(storage_jsons)
+        user_data = await call_async(self.client.authorise_with_local_storage, storage_jsons)
         self.client.set_auth_lost_callback(self.auth_lost)
         self.emit("service-login")
-        return (user_data['userId'], user_data['username'])
+        return user_data['userId'], user_data['username']
 
     def is_connected(self):
         return self.is_authenticated()

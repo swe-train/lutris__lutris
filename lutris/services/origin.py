@@ -20,6 +20,7 @@ from lutris.installer import get_installers_async
 from lutris.services.base import OnlineService
 from lutris.services.service_game import ServiceGame
 from lutris.services.service_media import ServiceMedia
+from lutris.util.jobs import call_async
 from lutris.util.log import logger
 from lutris.util.strings import slugify
 
@@ -172,8 +173,8 @@ class OriginService(OnlineService):
     def is_connected(self):
         return bool(self.access_token)
 
-    def login_callback(self, url):
-        self.fetch_access_token()
+    async def login_complete_async(self, content):
+        await call_async(self.fetch_access_token)
         self.emit("service-login")
 
     def fetch_access_token(self):

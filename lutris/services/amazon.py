@@ -129,13 +129,13 @@ class AmazonService(OnlineService):
 
         return "https://amazon.com/ap/signin?" + urlencode(arguments)
 
-    async def login_complete_async(self, url):
+    async def login_complete_async(self, content):
         """Get authentication token from Amazon"""
-        if url.find("openid.oa2.authorization_code") > 0:
+        if content.find("openid.oa2.authorization_code") > 0:
             logger.info("Got authorization code")
 
             # Parse auth code
-            parsed = urlparse(url)
+            parsed = urlparse(content)
             query = parse_qs(parsed.query)
             auth_code = query["openid.oa2.authorization_code"][0]
 

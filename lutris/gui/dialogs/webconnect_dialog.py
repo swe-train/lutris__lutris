@@ -4,8 +4,6 @@ from gettext import gettext as _
 
 import gi
 
-from lutris.exception_backstops import async_execute
-
 try:
     gi.require_version("WebKit2", "4.1")
 except ValueError:
@@ -13,7 +11,7 @@ except ValueError:
 from gi.repository import WebKit2
 
 from lutris.gui.dialogs import ModalDialog
-
+from lutris.exception_backstops import async_execute
 
 DEFAULT_USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64; rv:100.0) Gecko/20100101 Firefox/100.0"
 

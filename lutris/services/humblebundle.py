@@ -92,7 +92,7 @@ class HumbleBundleService(OnlineService):
             if dialog.cookies_content:
                 with open(self.cookies_path, "w", encoding="utf-8") as cookies_file:
                     cookies_file.write(dialog.cookies_content)
-                self.login_callback(None)
+                self.emit("service-login")
             else:
                 self.logout()
         else:
