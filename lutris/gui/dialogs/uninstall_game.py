@@ -290,7 +290,7 @@ class UninstallMultipleGamesDialog(Gtk.Dialog):
             self.directory_label: Gtk.Label = None
 
             hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-            vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+            vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, margin_left=6, margin_right=6)
             vbox.pack_start(hbox, False, False, 0)
 
             label = Gtk.Label(game.name, selectable=True)
@@ -322,7 +322,10 @@ class UninstallMultipleGamesDialog(Gtk.Dialog):
                 self.folder_size_spinner = Gtk.Spinner(visible=False, no_show_all=True)
                 dir_box.pack_start(self.folder_size_spinner, False, False, 0)
 
-                vbox.pack_start(dir_box, False, False, 0)
+                directory_label = Gtk.Label(halign=Gtk.Align.START,
+                                            selectable=True)
+                directory_label.set_markup("<span font_desc='8'>%s</span>" % gtk_safe(self.game.directory))
+                vbox.pack_start(directory_label, False, False, 0)
             self.add(vbox)
 
         def _get_directory_markup(self, folder_size: int = None):
