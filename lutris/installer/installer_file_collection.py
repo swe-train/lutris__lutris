@@ -16,7 +16,7 @@ class InstallerFileCollection:
     """Representation of a collection of files in the `files` sections of an installer.
        Store files in a folder"""
 
-    def __init__(self, game_slug, file_id, files_list, dest_file=None):
+    def __init__(self, game_slug, file_id, files_list, dest_file=None, uses_pga_cache=None):
         self.game_slug = game_slug
         self.id = file_id.replace("-", "_")  # pylint: disable=invalid-name
         self.num_files = len(files_list)
@@ -25,6 +25,11 @@ class InstallerFileCollection:
         self.full_size = 0
         self._get_files_size()
         self._get_service()
+
+        if uses_pga_cache is None:
+            self.uses_pga_cache = self.get_uses_pga_cache()
+        else:
+            self.uses_pga_cache = uses_pga_cache
 
     def _get_files_size(self):
         if len(self.files_list) > 0:
@@ -49,7 +54,8 @@ class InstallerFileCollection:
         new_file_list = []
         for file in self.files_list:
             new_file_list.append(file.copy())
-        return InstallerFileCollection(self.game_slug, self.id, new_file_list, self._dest_file)
+        return InstallerFileCollection(self.game_slug, self.id, new_file_list, self._dest_file,
+                                       uses_pga_cache=self.uses_pga_cache)
 
     def override_dest_file(self, new_dest_file):
         """Called by the UI when the user selects a file path; this causes
@@ -107,7 +113,7 @@ class InstallerFileCollection:
         _providers.add("download")
         return _providers
 
-    def uses_pga_cache(self):
+    def get_uses_pga_cache(self):
         """Determines whether the installer files are stored in a PGA cache
 
         Returns:
@@ -157,9 +163,9 @@ class InstallerFileCollection:
     @property
     def is_cached(self):
         """Are the files available in the local PGA cache?"""
-        if self.uses_pga_cache():
+        if self.uses_pga_cache:
             # check if every file is in cache, without checking
-            # uses_pga_cache() on each.
+            # uses_pga_cache on each.
             for installer_file in self.files_list:
                 if not system.path_exists(installer_file.dest_file):
                     return False

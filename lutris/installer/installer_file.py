@@ -15,18 +15,25 @@ from lutris.util.strings import gtk_safe_urls
 class InstallerFile:
     """Representation of a file in the `files` sections of an installer"""
 
-    def __init__(self, game_slug, file_id, file_meta, dest_file=None):
+    def __init__(self, game_slug, file_id, file_meta, dest_file=None, uses_pga_cache=None):
         self.game_slug = game_slug
         self.id = file_id.replace("-", "_")  # pylint: disable=invalid-name
         self._file_meta = file_meta
         self._dest_file = dest_file  # Used to override the destination
 
+        if uses_pga_cache is None:
+            self.uses_pga_cache = self.get_uses_pga_cache()
+        else:
+            self.uses_pga_cache = uses_pga_cache
+
     def copy(self):
         """Copies this file object, so the copy can be modified safely."""
         if isinstance(self._file_meta, dict):
-            return InstallerFile(self.game_slug, self.id, self._file_meta.copy(), self._dest_file)
+            return InstallerFile(self.game_slug, self.id, self._file_meta.copy(), self._dest_file,
+                                 uses_pga_cache=self.uses_pga_cache)
 
-        return InstallerFile(self.game_slug, self.id, self._file_meta, self._dest_file)
+        return InstallerFile(self.game_slug, self.id, self._file_meta, self._dest_file,
+                             uses_pga_cache=self.uses_pga_cache)
 
     @property
     def url(self):
@@ -55,7 +62,7 @@ class InstallerFile:
                 raise ScriptingError(_("missing field `filename` in file `%s`") % self.id)
             return self._file_meta["filename"]
         if self._file_meta.startswith("N/A"):
-            if self.uses_pga_cache() and os.path.isdir(self.cache_path):
+            if self.uses_pga_cache and os.path.isdir(self.cache_path):
                 return self.cached_filename
             return ""
         if self.url.startswith("$STEAM"):
@@ -167,7 +174,7 @@ class InstallerFile:
         """Return True if the file can be downloaded (even from the local filesystem)"""
         return self.url.startswith(("http", "file"))
 
-    def uses_pga_cache(self):
+    def get_uses_pga_cache(self):
         """Determines whether the installer files are stored in a PGA cache
 
         Returns:
@@ -188,7 +195,7 @@ class InstallerFile:
     def is_user_pga_caching_allowed(self):
         """Returns true if this file can be transferred to the cache, if
         the user provides it."""
-        return self.uses_pga_cache()
+        return self.uses_pga_cache
 
     @property
     def cache_path(self):
@@ -250,7 +257,7 @@ class InstallerFile:
     @property
     def is_cached(self):
         """Is the file available in the local PGA cache?"""
-        return self.uses_pga_cache() and system.path_exists(self.dest_file)
+        return self.uses_pga_cache and system.path_exists(self.dest_file)
 
     def save_to_cache(self):
         """Copy the file into the PGA cache."""
@@ -269,8 +276,8 @@ class InstallerFile:
     def remove_previous(self):
         """Remove file at already at destination, prior to starting the download."""
         if (
-                not self.uses_pga_cache()
-                and system.path_exists(self.dest_file)
+            not self.uses_pga_cache
+            and system.path_exists(self.dest_file)
         ):
             # If we've previously downloaded a directory, we'll need to get rid of it
             # to download a file now. Since we are not using the cache, we don't keep

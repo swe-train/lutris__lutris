@@ -338,7 +338,7 @@ class InstallerWindow(ModelessDialog,
         self.stack.present_page("choose_installer")
         self.display_cancel_button(extra_buttons=[self.cache_button])
 
-    def on_installer_selected(self, _widget, installer_version):
+    async def on_installer_selected(self, _widget, installer_version):
         """Sets the script interpreter to the correct script then proceed to
         install folder selection.
 
@@ -346,11 +346,15 @@ class InstallerWindow(ModelessDialog,
         prompt the user to install it and quit this installer.
         """
         try:
-            script = None
-            for _script in self.installers:
-                if _script["version"] == installer_version:
-                    script = _script
-            self.interpreter = interpreter.ScriptInterpreter(script, self)
+            def make_interpreter():
+                script = None
+                for _script in self.installers:
+                    if _script["version"] == installer_version:
+                        script = _script
+
+                return interpreter.ScriptInterpreter(script, self)
+
+            self.interpreter = await call_async(make_interpreter)
             self.interpreter.connect("runners-installed", self.on_runners_ready)
         except MissingGameDependency as ex:
             dlg = QuestionDialog(

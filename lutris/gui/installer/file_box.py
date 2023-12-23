@@ -26,7 +26,7 @@ class InstallerFileBox(Gtk.VBox):
     def __init__(self, installer_file):
         super().__init__()
         self.installer_file = installer_file
-        self.cache_to_pga = self.installer_file.uses_pga_cache()
+        self.cache_to_pga = self.installer_file.uses_pga_cache
         self.started = False
         self.start_func = None
         self.stop_func = None
