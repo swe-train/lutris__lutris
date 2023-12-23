@@ -271,12 +271,12 @@ class RunnerInstallDialog(ModelessDialog):
         row.install_uninstall_cancel_button = button
         row.handler_id = handler_id
 
-    def on_show_apps_usage(self, _button, row):
+    async def on_show_apps_usage(self, _button, row):
         """Return grid with games that uses this wine version"""
         runner = row.runner
         runner_version = "%s-%s" % (runner["version"], runner["architecture"])
         dialog = ShowAppsDialog(_("Wine version usage"), self.get_toplevel(), self.runner_name, runner_version)
-        dialog.run()
+        await dialog.run_async()
 
     @staticmethod
     def get_version_sort_key(version):

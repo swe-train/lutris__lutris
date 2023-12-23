@@ -314,7 +314,7 @@ class GameActions(BaseGameActions):
                     "initial_value": initial_name
                 }
             )
-            result = duplicate_game_dialog.run()
+            result = await duplicate_game_dialog.run_async()
             if result != Gtk.ResponseType.OK:
                 duplicate_game_dialog.destroy()
                 return
