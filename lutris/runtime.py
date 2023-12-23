@@ -1,7 +1,6 @@
 """Runtime handling module"""
 import concurrent.futures
 import os
-import threading
 import time
 from gettext import gettext as _
 from typing import Any, Dict, List
@@ -15,7 +14,7 @@ from lutris.settings import UPDATE_CHANNEL_STABLE
 from lutris.util import http, system
 from lutris.util.downloader import Downloader
 from lutris.util.extract import extract_archive
-from lutris.util.jobs import AsyncCall
+from lutris.util.jobs import call_async
 from lutris.util.linux import LINUX_SYSTEM
 from lutris.util.log import logger
 from lutris.util.wine.d3d_extras import D3DExtrasManager
@@ -135,15 +134,20 @@ class ComponentUpdater:
         """True if this update should be installed; false to discard it."""
         return True
 
-    def install_update(self, updater: 'RuntimeUpdater') -> None:
-        """Performs the update; runs on a worker thread, and returns when complete.
-        However, some updates spawn a further thread to extract in parallel with the
-        next update even after this."""
+    async def install_update_async(self, updater: 'RuntimeUpdater') -> None:
+        """Performs the update; this should spawn threads to run in the background. The co-routine
+        returned is awaited and the next update does not start until it completes; but see
+        complete_update_async().
+
+        This spawns a thread to download archives and files; we do not wish to overlap downloads."""
         raise NotImplementedError
 
-    def join(self):
-        """Blocks until the update is entirely complete; used when install_update() spawns
-        a thread to finish up. We call this on each update before closing the download queue."""
+    async def complete_update_async(self, updater: 'RuntimeUpdater') -> None:
+        """Does the overlapped part of the update, if any. Once install_update_async() completes,
+        we call this and schedule the co-routine, but then move on to start the next update.
+        We await these only once the last update has completed its install_update_async().
+
+        This may spawn a thread to extract the archive."""
 
     def get_progress(self) -> ProgressInfo:
         """Returns the current progress for the updater as it runs; called from the main thread."""
@@ -257,7 +261,7 @@ class RuntimeComponentUpdater(ComponentUpdater):
     def name(self) -> str:
         return self.remote_runtime_info["name"]
 
-    def install_update(self, updater: 'RuntimeUpdater') -> None:
+    async def install_update_async(self, updater: 'RuntimeUpdater') -> None:
         raise NotImplementedError
 
     def get_progress(self) -> ProgressInfo:
@@ -318,8 +322,9 @@ class RuntimeExtractedComponentUpdater(RuntimeComponentUpdater):
     def __init__(self, remote_runtime_info: Dict[str, Any]) -> None:
         super().__init__(remote_runtime_info)
         self.url = remote_runtime_info["url"]
+        self.archive_path = os.path.join(settings.RUNTIME_DIR, os.path.basename(self.url))
         self.downloader: Downloader = None
-        self.complete_event = threading.Event()
+        self.extraction = None
 
     def get_progress(self) -> ProgressInfo:
         progress_info = super().get_progress()
@@ -329,51 +334,25 @@ class RuntimeExtractedComponentUpdater(RuntimeComponentUpdater):
 
         return progress_info
 
-    def install_update(self, updater: RuntimeUpdater) -> None:
-        self.state = ComponentUpdater.DOWNLOADING
-        self.complete_event.clear()
+    async def install_update_async(self, updater: RuntimeUpdater) -> None:
+        await call_async(self._install)
 
-        archive_path = os.path.join(settings.RUNTIME_DIR, os.path.basename(self.url))
-        self.downloader = Downloader(self.url, archive_path, overwrite=True)
+    async def complete_update_async(self, updater: RuntimeUpdater) -> None:
+        await call_async(self._extract)
+
+    def _install(self):
+        """Finishes the installation after download, on a worker thread. This extracts
+        the archive and downloads the versions file for it, the marks the update complete
+        so join() above will be unblocked."""
+        self.state = ComponentUpdater.DOWNLOADING
+
+        self.downloader = Downloader(self.url, self.archive_path, overwrite=True)
         self.downloader.start()
         self.downloader.join()
         self.downloader = None
 
-        AsyncCall(self._install, self._install_cb, archive_path)
-
-    def join(self):
-        self.complete_event.wait()
-
-    def _complete(self):
-        self.state = ComponentUpdater.COMPLETED
-        self.complete_event.set()
-
-    def _install(self, path: str):
-        """Finishes the installation after download, on a worker thread. This extracts
-        the archive and downloads the versions file for it, the marks the update complete
-        so join() above will be unblocked."""
-        try:
-            self._extract(path)
-
-            self.set_updated_at()
-            if self.name in DLL_MANAGERS:
-                manager = DLL_MANAGERS[self.name]()
-                manager.fetch_versions()
-        finally:
-            self._complete()
-
-    def _install_cb(self, _completed: bool, error: Exception):
-        if error:
-            logger.error("Runtime update failed: %s", error)
-
-    def _extract(self, path: str) -> None:
-        """Actions taken once a runtime is downloaded
-
-        Arguments:
-            path: local path to the runtime archive, or None on download failure
-        """
-        if not path:
-            return
+    def _extract(self) -> None:
+        path = self.archive_path
 
         stats = os.stat(path)
         if not stats.st_size:
@@ -393,13 +372,23 @@ class RuntimeExtractedComponentUpdater(RuntimeComponentUpdater):
         archive_path, _destination_path = extract_archive(path, dest_path, merge_single=True)
         os.unlink(archive_path)
 
+        self.set_updated_at()
+        if self.name in DLL_MANAGERS:
+            manager = DLL_MANAGERS[self.name]()
+            manager.fetch_versions()
+
+        self.state = ComponentUpdater.COMPLETED
+
 
 class RuntimeFilesComponentUpdater(RuntimeComponentUpdater):
     """Component updaters that downloads a set of files described by the server
     individually."""
 
-    def install_update(self, updater: RuntimeUpdater) -> None:
+    async def install_update_async(self, updater: RuntimeUpdater) -> None:
         """Download a runtime item by individual components. Used for icons only at the moment"""
+        await call_async(self._download)
+
+    def _download(self):
         self.state = ComponentUpdater.DOWNLOADING
         components = self._get_runtime_components()
         downloads = []
@@ -457,8 +446,11 @@ class RunnerComponentUpdater(ComponentUpdater):
         self.upstream_runner = upstream_runner
         self.runner_version = format_runner_version(upstream_runner)
         self.version_path = os.path.join(settings.RUNNER_DIR, name, self.runner_version)
+        self.url = self.upstream_runner["url"]
+        self.archive_path = os.path.join(settings.TMP_DIR, os.path.basename(self.url))
         self.downloader: Downloader = None
         self.state = ComponentUpdater.PENDING
+        self.extraction = None
 
     @property
     def name(self) -> str:
@@ -476,20 +468,24 @@ class RunnerComponentUpdater(ComponentUpdater):
 
         return True
 
-    def install_update(self, updater: 'RuntimeUpdater') -> None:
-        url = self.upstream_runner["url"]
-        archive_download_path = os.path.join(settings.TMP_DIR, os.path.basename(url))
+    async def install_update_async(self, updater: RuntimeUpdater) -> None:
+        await call_async(self._download)
+
+    async def complete_update_async(self, updater: RuntimeUpdater) -> None:
+        await call_async(self._extract)
+
+    def _download(self):
         self.state = ComponentUpdater.DOWNLOADING
-        self.downloader = Downloader(self.upstream_runner["url"], archive_download_path)
+        self.downloader = Downloader(self.upstream_runner["url"], self.archive_path)
         self.downloader.start()
         self.downloader.join()
-        if self.downloader.state == self.downloader.COMPLETED:
-            self.downloader = None
-            self.state = ComponentUpdater.EXTRACTING
-            extract_archive(archive_download_path, self.version_path)
-            get_installed_wine_versions.cache_clear()
+        self.downloader = None
 
-        os.remove(archive_download_path)
+    def _extract(self):
+        self.state = ComponentUpdater.EXTRACTING
+        extract_archive(self.archive_path, self.version_path)
+        os.remove(self.archive_path)
+        get_installed_wine_versions.cache_clear()
         self.state = ComponentUpdater.COMPLETED
 
     def get_progress(self) -> ProgressInfo:

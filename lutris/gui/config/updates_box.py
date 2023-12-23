@@ -154,7 +154,7 @@ class UpdatesBox(BaseConfigBox):
             return
         return application.window
 
-    def on_runners_update_clicked(self, _widget):
+    async def on_runners_update_clicked(self, _widget):
         window = self._get_main_window()
         if not window:
             return
@@ -162,31 +162,32 @@ class UpdatesBox(BaseConfigBox):
         updater.update_runners = True
         component_updaters = updater.create_component_updaters()
         if component_updaters:
-            def on_complete(_result):
-                self.apply_wine_update_texts()
+            future = window.start_install_runtime_component_updates(component_updaters, updater)
 
-            started = window.install_runtime_component_updates(component_updaters, updater,
-                                                               completion_function=on_complete,
-                                                               error_function=self.update_runners_box.show_error)
-
-            if started:
+            if future:
                 self.update_runners_box.show_running_markup(_("<i>Downloading...</i>"))
+                try:
+                    await future
+                    self.apply_wine_update_texts()
+                except Exception as ex:
+                    self.update_runners_box.show_error(ex)
             else:
                 NoticeDialog(_("Updates are already being downloaded and installed."),
                              parent=self.get_toplevel())
         else:
             self.apply_wine_update_texts(_("No updates are required at this time."))
 
-    def on_runtime_update_clicked(self, _widget):
+    async def on_runtime_update_clicked(self, _widget):
         def get_updater():
             updater = RuntimeUpdater()
             updater.update_runtime = True
             return updater
 
-        self._trigger_updates(get_updater, self.update_runtime_box)
+        await self._trigger_updates_async(get_updater, self.update_runtime_box)
 
-    def _trigger_updates(self, updater_factory: Callable,
-                         update_box: 'UpdateButtonBox') -> None:
+    async def _trigger_updates_async(self,
+                                     updater_factory: Callable,
+                                     update_box: 'UpdateButtonBox') -> None:
         window = self._get_main_window()
         if not window:
             return
@@ -194,19 +195,20 @@ class UpdatesBox(BaseConfigBox):
         updater = updater_factory()
         component_updaters = updater.create_component_updaters()
         if component_updaters:
-            def on_complete(_result):
-                if len(component_updaters) == 1:
-                    update_box.show_completion_markup("", _("1 component has been updated."))
-                else:
-                    update_box.show_completion_markup("",
-                                                      _("%d components have been updated.") % len(component_updaters))
+            future = window.start_install_runtime_component_updates(component_updaters, updater)
 
-            started = window.install_runtime_component_updates(component_updaters, updater,
-                                                               completion_function=on_complete,
-                                                               error_function=update_box.show_error)
-
-            if started:
+            if future:
                 update_box.show_running_markup(_("<i>Checking for updates...</i>"))
+                try:
+                    await future
+                    if len(component_updaters) == 1:
+                        update_box.show_completion_markup("", _("1 component has been updated."))
+                    else:
+                        update_box.show_completion_markup("",
+                                                          _("%d components have been updated.") % len(
+                                                              component_updaters))
+                except Exception as ex:
+                    update_box.show_error(ex)
             else:
                 NoticeDialog(_("Updates are already being downloaded and installed."),
                              parent=self.get_toplevel())

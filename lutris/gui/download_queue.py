@@ -1,4 +1,5 @@
 # pylint: disable=no-member
+import asyncio
 import os
 from typing import Any, Callable, Dict, Iterable, List, Set
 
@@ -7,7 +8,6 @@ from gi.repository import Gtk
 from lutris.gui.widgets.gi_composites import GtkTemplate
 from lutris.gui.widgets.progress_box import ProgressBox
 from lutris.util import datapath
-from lutris.util.jobs import AsyncCall
 from lutris.util.log import logger
 
 
@@ -90,53 +90,42 @@ class DownloadQueue(Gtk.ScrolledWindow):
             if not self.progress_boxes:
                 self.revealer.set_reveal_child(False)
 
-    def start(self, operation: Callable[[], Any],
-              progress_function: ProgressBox.ProgressFunction,
-              completion_function: CompletionFunction = None,
-              error_function: ErrorFunction = None,
-              operation_name: str = None) -> bool:
-        """Runs 'operation' on a thread, while displaying a progress bar. The 'progress_function'
-        controls this progress bar, and it is removed when the 'operation' completes.
+    async def start_async(self, coroutine,
+                          progress_function: ProgressBox.ProgressFunction,
+                          operation_name: str = None) -> Any:
+        """Schedules 'coroutine' to run, while displaying a progress bar. The
+        'progress_function' controls this progress bar, and it is removed when the
+        'coroutine' completes. This function completes asynchronously when the coroutine
+        does, and returns its result.
 
         If 'operation_name' is given, it is added to self.running_operation_names while
-        the 'operation' runs. If the name is present already, this method does nothing
-        but returns False. If the worker thread has started, this returns True.
+        the 'coroutine' runs.
 
         Args:
-            operation:              Called on a worker thread
+            coroutine:              Scheduled on the running loop, and awaited.
             progress_function:      Called on the main thread for progress status
-            completion_function:    Called on the main thread on completion, with result
-            error_function:         Called on the main threa don error, with exception
             operation_name:         Name of operation, to prevent duplicate queued work."""
 
-        return self.start_multiple(operation, [progress_function],
-                                   completion_function=completion_function,
-                                   error_function=error_function,
-                                   operation_names=[operation_name] if operation_name else None)
+        return await self.start_multiple_async(coroutine, [progress_function],
+                                               operation_names=[operation_name] if operation_name else None)
 
-    def start_multiple(self, operation: Callable[[], Any],
-                       progress_functions: Iterable[ProgressBox.ProgressFunction],
-                       completion_function: CompletionFunction = None,
-                       error_function: ErrorFunction = None,
-                       operation_names: List[str] = None) -> bool:
-        """Runs 'operation' on a thread, while displaying a set of progress bars. The
+    async def start_multiple_async(self, coroutine,
+                                   progress_functions: Iterable[ProgressBox.ProgressFunction],
+                                   operation_names: List[str] = None) -> Any:
+        """Schedules 'coroutine' to run, while displaying a set of progress bars. The
         'progress_functions' control these progress bars, and they are removed when the
-        'operation' completes.
+        'operation' completes. This function completes asynchronously when the coroutine
+        does, and returns its result.
 
         If 'operation_names' is given, they are added to self.running_operation_names while
-        the 'operation' runs. If any name is present already, this method does nothing
-        but returns False. If the worker thread has started, this returns True.
+        the 'coroutine' runs.
 
         Args:
-            operation:              Called on a worker thread
+            coroutine:              Scheduled on the running loop, and awaited.
             progress_functions:     Called on the main thread for progress status
-            completion_function:    Called on the main thread on completion, with result
-            error_function:         Called on the main threa don error, with exception
             operation_names:        Names of operations, to prevent duplicate queued work."""
 
         if operation_names:
-            if not self.running_operation_names.isdisjoint(operation_names):
-                return False
             self.running_operation_names.update(operation_names)
 
         # Must capture the functions, since in earlier (<3.8) Pythons functions do not provide
@@ -146,18 +135,19 @@ class DownloadQueue(Gtk.ScrolledWindow):
         for f in captured_functions:
             self.add_progress_box(f)
 
-        def completion_callback(result, error):
+        try:
+            task = asyncio.create_task(coroutine)
+            return await task
+        except Exception as ex:
+            logger.exception("Failed to execute download-queue function: %s", ex)
+            raise
+        finally:
             for to_end in captured_functions:
                 self.remove_progress_box(to_end)
 
-            self.running_operation_names.difference_update(operation_names)
+            if operation_names:
+                self.running_operation_names.difference_update(operation_names)
 
-            if error:
-                logger.exception("Failed to execute download-queue function: %s", error)
-                if error_function:
-                    error_function(error)
-            elif completion_function:
-                completion_function(result)
-
-        AsyncCall(operation, completion_callback)
-        return True
+    def check_any_operations_running(self, operation_names: Iterable[str]) -> bool:
+        """True if any of the names in 'operation_names' is currently running."""
+        return not self.running_operation_names.isdisjoint(operation_names)

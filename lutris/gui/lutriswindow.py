@@ -1,4 +1,5 @@
 """Main window for the Lutris interface."""
+import asyncio
 # pylint:disable=too-many-lines
 import os
 from collections import namedtuple
@@ -12,6 +13,7 @@ from lutris import services, settings
 from lutris.database import categories as categories_db
 from lutris.database import games as games_db
 from lutris.database.services import ServiceGameCollection
+from lutris.exception_backstops import async_execute
 from lutris.exceptions import EsyncLimitError, FsyncUnsupportedError
 from lutris.game import Game
 from lutris.gui import dialogs
@@ -33,7 +35,7 @@ from lutris.scanners.lutris import add_to_path_cache, get_missing_game_ids, remo
 from lutris.services.base import BaseService
 from lutris.services.lutris import LutrisService
 from lutris.util import datapath
-from lutris.util.jobs import AsyncCall
+from lutris.util.jobs import AsyncCall, call_async
 from lutris.util.log import logger
 from lutris.util.strings import get_natural_sort_key
 from lutris.util.system import update_desktop_icons
@@ -1107,38 +1109,40 @@ class LutrisWindow(Gtk.ApplicationWindow,
         """Starts the process of applying runtime updates, asynchronously. No UI appears until
         we can determine that there are updates to perform."""
 
-        def create_runtime_updater():
+        def create_updaters():
             runtime_updater = RuntimeUpdater(force=force_updates)
             component_updaters = runtime_updater.create_component_updaters()
-            return component_updaters, runtime_updater
+            return runtime_updater, component_updaters
 
-        def create_runtime_updater_cb(result, error):
-            if error:
-                logger.exception("Failed to obtain updates from Lutris.net: %s", error)
-            else:
-                component_updaters, runtime_updater = result
-                if component_updaters:
-                    self.install_runtime_component_updates(component_updaters, runtime_updater)
+        async def install_updates():
+            runtime_updater, component_updaters = await call_async(create_updaters)
+            if component_updaters:
+                task = self.start_install_runtime_component_updates(component_updaters, runtime_updater)
+                if task:
+                    await task
 
-        AsyncCall(create_runtime_updater, create_runtime_updater_cb)
+        async_execute(install_updates())
 
-    def install_runtime_component_updates(self, updaters: List[ComponentUpdater],
-                                          runtime_updater: RuntimeUpdater,
-                                          completion_function: DownloadQueue.CompletionFunction = None,
-                                          error_function: DownloadQueue.ErrorFunction = None) -> bool:
+    def start_install_runtime_component_updates(self, updaters: List[ComponentUpdater],
+                                                runtime_updater: RuntimeUpdater):
         """Installs a list of component updates. This displays progress bars
-        in the sidebar as it installs updates, one at a time."""
+        in the sidebar as it installs updates, one at a time. This will return None if any of the updates
+        are already running, or a task if it has started the updates; this task completes when the updates
+        have been done."""
 
         queue = self.download_queue
         operation_names = [f"component_update:{u.name}" for u in updaters]
 
-        def install_updates():
-            for updater in updaters:
-                updater.install_update(runtime_updater)
-            for updater in updaters:
-                updater.join()
+        async def install_updates_async():
+            async with asyncio.TaskGroup() as tg:
+                for updater in updaters:
+                    await updater.install_update_async(runtime_updater)
+                    tg.create_task(updater.complete_update_async(runtime_updater))
 
-        return queue.start_multiple(install_updates, (u.get_progress for u in updaters),
-                                    completion_function=completion_function,
-                                    error_function=error_function,
-                                    operation_names=operation_names)
+        if queue.check_any_operations_running(operation_names):
+            return None
+
+        coroutine = queue.start_multiple_async(install_updates_async(),
+                                               (u.get_progress for u in updaters),
+                                               operation_names=operation_names)
+        return asyncio.create_task(coroutine)
