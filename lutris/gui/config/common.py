@@ -390,14 +390,14 @@ class GameDialogCommon(SavableModelessDialog, DialogInstallUIDelegate):
         self.slug_entry.set_sensitive(False)
         self.slug_change_button.set_label(_("Change"))
 
-    def on_move_clicked(self, _button):
+    async def on_move_clicked(self, _button):
         new_location = DirectoryDialog("Select new location for the game",
                                        default_path=self.game.directory, parent=self)
         if not new_location.folder or new_location.folder == self.game.directory:
             return
         move_dialog = dialogs.MoveDialog(self.game, new_location.folder, parent=self)
         move_dialog.connect("game-moved", self.on_game_moved)
-        move_dialog.move()
+        await move_dialog.move_async()
 
     def on_game_moved(self, dialog):
         """Show a notification when the game is moved"""

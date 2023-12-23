@@ -13,7 +13,7 @@ from gi.repository import Gdk, GLib, GObject, Gtk
 from lutris import api, settings
 from lutris.gui.widgets.log_text_view import LogTextView
 from lutris.util import datapath
-from lutris.util.jobs import AsyncCall, call_async
+from lutris.util.jobs import call_async
 from lutris.util.log import logger
 from lutris.util.strings import gtk_safe
 
@@ -563,21 +563,14 @@ class MoveDialog(ModelessDialog):
     def on_destroy(self, _dialog):
         GLib.source_remove(self.progress_source_id)
 
-    def move(self):
-        AsyncCall(self._move_game, self.on_game_moved)
+    async def move_async(self):
+        self.new_directory = await call_async(self.game.move, self.destination)
+        self.emit("game-moved")
+        self.destroy()
 
     def show_progress(self):
         self.progress.pulse()
         return True
-
-    def _move_game(self):
-        self.new_directory = self.game.move(self.destination)
-
-    def on_game_moved(self, _result, error):
-        if error:
-            ErrorDialog(error, parent=self)
-        self.emit("game-moved")
-        self.destroy()
 
 
 class HumbleBundleCookiesDialog(ModalDialog):
