@@ -814,13 +814,8 @@ class LutrisWindow(Gtk.ApplicationWindow,
         if self.window_x and self.window_y:
             self.move(int(self.window_x), int(self.window_y))
 
-    def on_service_login(self, service):
-        service.start_reload(self._service_reloaded_cb)
-        return True
-
-    def _service_reloaded_cb(self, error):
-        if error:
-            dialogs.ErrorDialog(error, parent=self)
+    async def on_service_login(self, service):
+        await service.reload_async()
 
     def on_service_logout(self, service):
         if self.service and service.id == self.service.id:

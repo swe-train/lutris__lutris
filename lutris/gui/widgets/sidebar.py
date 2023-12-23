@@ -13,7 +13,6 @@ from lutris.gui.config.edit_category_games import EditCategoryGamesDialog
 from lutris.gui.config.runner import RunnerConfigDialog
 from lutris.gui.config.runner_box import RunnerBox
 from lutris.gui.config.services_box import ServicesBox
-from lutris.gui.dialogs import ErrorDialog
 from lutris.gui.dialogs.runner_install import RunnerInstallDialog
 from lutris.gui.widgets.utils import has_stock_icon
 from lutris.installer.interpreter import ScriptInterpreter
@@ -155,22 +154,23 @@ class ServiceSidebarRow(SidebarRow):
         """Run a launcher associated with a service"""
         self.service.run()
 
-    def on_refresh_clicked(self, button):
+    async def on_refresh_clicked(self, button):
         """Reload the service games"""
         button.set_sensitive(False)
         if self.service.online and not self.service.is_connected():
             self.service.logout()
             return
-        self.service.start_reload(self.service_reloaded_cb)
 
-    def service_reloaded_cb(self, error):
-        if error:
-            if isinstance(error, AuthTokenExpired):
-                self.service.logout()
-                self.service.login(parent=self.get_toplevel())
-            else:
-                ErrorDialog(error, parent=self.get_toplevel())
-        GLib.timeout_add(2000, self.enable_refresh_button)
+        try:
+            await self.service.reload_async()
+            GLib.timeout_add(2000, self.enable_refresh_button)
+        except AuthTokenExpired:
+            self.service.logout()
+            self.service.login(parent=self.get_toplevel())
+            # Do not enable refresh button, we're logged out.
+        except Exception:
+            GLib.timeout_add(2000, self.enable_refresh_button)
+            raise
 
     def enable_refresh_button(self):
         self.buttons["refresh"].set_sensitive(True)

@@ -21,7 +21,7 @@ from lutris.installer import get_installers
 from lutris.services.service_media import ServiceMedia
 from lutris.util import system
 from lutris.util.cookies import WebkitCookieJar
-from lutris.util.jobs import AsyncCall, call_async
+from lutris.util.jobs import call_async
 from lutris.util.log import logger
 from lutris.util.strings import slugify
 
@@ -128,32 +128,28 @@ class BaseService(GObject.Object):
             return False
         return launcher.is_installed
 
-    def start_reload(self, reloaded_callback):
+    async def reload_async(self):
         """Refresh the service's games, asynchronously. This raises signals, but
-        does so on the main thread- and runs the reload on a worker thread. It calls
-        reloaded_callback when done, passing any error (or None on success)"""
+        does so on the main thread- and runs the reload on a worker thread."""
 
         def do_reload():
-            if self.is_loading:
-                logger.warning("'%s' games are already loading", self.name)
-                return
+            self.wipe_game_cache()
+            self.load()
+            self.load_icons()
+            self.add_installed_games()
 
-            try:
-                self.is_loading = True
-
-                self.wipe_game_cache()
-                self.load()
-                self.load_icons()
-                self.add_installed_games()
-            finally:
-                self.is_loading = False
-
-        def reload_cb(_result, error):
-            self.emit("service-games-loaded")
-            reloaded_callback(error)
+        if self.is_loading:
+            logger.warning("'%s' games are already loading", self.name)
+            return
 
         self.emit("service-games-load")
-        AsyncCall(do_reload, reload_cb)
+
+        try:
+            self.is_loading = True
+            await call_async(do_reload)
+        finally:
+            self.is_loading = False
+            self.emit("service-games-loaded")
 
     def load(self):
         logger.warning("Load method not implemented")
