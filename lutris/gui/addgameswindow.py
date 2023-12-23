@@ -4,6 +4,7 @@ from gettext import gettext as _
 from gi.repository import Gio, GLib, Gtk
 
 from lutris import api, sysoptions
+from lutris.exception_backstops import async_execute
 from lutris.gui.config.add_game_dialog import AddGameDialog
 from lutris.gui.dialogs import ErrorDialog, ModelessDialog
 from lutris.gui.dialogs.game_import import ImportGameDialog
@@ -11,7 +12,7 @@ from lutris.gui.widgets.common import FileChooserEntry
 from lutris.gui.widgets.navigation_stack import NavigationStack
 from lutris.installer import AUTO_WIN32_EXE, get_installers
 from lutris.scanners.lutris import scan_directory
-from lutris.util.jobs import AsyncCall, call_async
+from lutris.util.jobs import call_async
 from lutris.util.strings import gtk_safe, slugify
 
 
@@ -336,7 +337,7 @@ class AddGamesWindow(ModelessDialog):  # pylint: disable=too-many-public-methods
             self.set_page_title_markup("<b>Importing games from a folder</b>")
             self.stack.present_page("scanning_folder")
             self.display_no_continue_button()
-            AsyncCall(scan_directory, self._on_folder_scanned, path)
+            async_execute(self.scan_directory_async(path), error_objects=[self])
 
         self.stack.jump_to_page(present_scanning_folder_page)
 
@@ -345,7 +346,7 @@ class AddGamesWindow(ModelessDialog):  # pylint: disable=too-many-public-methods
         spinner.start()
         return spinner
 
-    def _on_folder_scanned(self, result, error):
+    async def scan_directory_async(self, path):
         def present_installed_games_page():
             if installed or missing:
                 self.set_page_title_markup(_("<b>Games found</b>"))
@@ -356,13 +357,12 @@ class AddGamesWindow(ModelessDialog):  # pylint: disable=too-many-public-methods
             self.stack.present_replacement_page("installed_games", page)
             self.display_cancel_button(label=_("_Close"))
 
-        if error:
-            ErrorDialog(error, parent=self)
+        try:
+            installed, missing = await call_async(scan_directory, path)
+            self.stack.navigate_to_page(present_installed_games_page)
+        except Exception as ex:
+            ErrorDialog(ex, parent=self)
             self.stack.navigation_reset()
-            return
-
-        installed, missing = result
-        self.stack.navigate_to_page(present_installed_games_page)
 
     def create_installed_games_page(self, installed, missing):
         vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
