@@ -1,7 +1,8 @@
 # pylint: disable=no-member
 import os
+from collections import defaultdict
 from gettext import gettext as _
-from typing import Callable, Dict, Iterable, List, Set
+from typing import Callable, Iterable, List
 
 from gi.repository import GObject, Gtk
 
@@ -11,9 +12,8 @@ from lutris.game import Game
 from lutris.gui.dialogs import QuestionDialog
 from lutris.gui.widgets.gi_composites import GtkTemplate
 from lutris.util import datapath
-from lutris.util.strings import get_natural_sort_key, gtk_safe, human_size
 from lutris.util.jobs import call_async
-from lutris.util.strings import gtk_safe, human_size
+from lutris.util.strings import get_natural_sort_key, gtk_safe, human_size
 from lutris.util.system import get_disk_size, is_removeable
 
 
@@ -93,12 +93,12 @@ class UninstallMultipleGamesDialog(Gtk.Dialog):
     def update_folder_sizes(self, new_games: List[Game]) -> None:
         """Starts fetching folder sizes for new games added to the dialog; we only
         do this for the games given in 'new_games', however."""
-        folders_to_size = set()
+        folders_to_size = []
 
         for row in self.uninstall_game_list.get_children():
             game = row.game
             if game in new_games and game.is_installed and game.directory:
-                folders_to_size.add(game.directory)
+                folders_to_size.append(game.directory)
                 row.show_folder_size_spinner()
 
             self.uninstall_game_list.add(row)
@@ -268,11 +268,21 @@ class UninstallMultipleGamesDialog(Gtk.Dialog):
         if response in (Gtk.ResponseType.DELETE_EVENT, Gtk.ResponseType.CANCEL, Gtk.ResponseType.OK):
             self.destroy()
 
-    async def _update_folder_sizes_async(self, folders_to_size: Set[str]) -> None:
+    async def _update_folder_sizes_async(self, folders_to_size: Iterable[str]) -> None:
+        rows_by_dir = defaultdict(list)
+
         for row in self.uninstall_game_list.get_children():
-            if row.game.directory in folders_to_size and row.game.directory:
-                size = await call_async(get_disk_size, row.game.directory)
-                row.show_folder_size(size)
+            if row.game.directory:
+                rows_by_dir[row.game.directory].append(row)
+
+        folders_done = set()
+
+        for folder in folders_to_size:
+            if folder not in folders_done:
+                size = await call_async(get_disk_size, folder)
+                for row in rows_by_dir[folder]:
+                    row.show_folder_size(size)
+                folders_done.add(folder)
 
     class GameRemovalRow(Gtk.ListBoxRow):
         __gsignals__ = {
