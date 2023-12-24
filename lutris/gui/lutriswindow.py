@@ -60,7 +60,7 @@ class LutrisWindow(Gtk.ApplicationWindow,
     sidebar_revealer = GtkTemplate.Child()
     sidebar_scrolled = GtkTemplate.Child()
     game_revealer = GtkTemplate.Child()
-    search_entry = GtkTemplate.Child()
+    search_entry: Gtk.Entry = GtkTemplate.Child()
     zoom_adjustment = GtkTemplate.Child()
     blank_overlay = GtkTemplate.Child()
     viewtype_icon = GtkTemplate.Child()
@@ -138,7 +138,7 @@ class LutrisWindow(Gtk.ApplicationWindow,
 
         self.update_action_state()
 
-        self.connect("view-updated", self.update_store)
+        self.connect("view-updated", self.on_game_store_update_needed)
         GObject.add_emission_hook(BaseService, "service-login", self.on_service_login)
         GObject.add_emission_hook(BaseService, "service-logout", self.on_service_logout)
         GObject.add_emission_hook(BaseService, "service-games-loaded", self.on_service_games_updated)
@@ -483,7 +483,7 @@ class LutrisWindow(Gtk.ApplicationWindow,
             ) if self.game_matches(game)
         ]
 
-    def get_games_from_filters(self):
+    async def get_games_from_filters_async(self):
         service_name = self.filters.get("service")
         if service_name in services.SERVICES:
             if self.service.online and not self.service.is_authenticated():
@@ -493,16 +493,15 @@ class LutrisWindow(Gtk.ApplicationWindow,
         if self.filters.get("dynamic_category") in self.dynamic_categories_game_factories:
             return self.dynamic_categories_game_factories[self.filters["dynamic_category"]]()
         if self.filters.get("category") and self.filters["category"] != "all":
-            game_ids = categories_db.get_game_ids_for_category(self.filters["category"])
+            game_ids = await call_async(categories_db.get_game_ids_for_category, self.filters["category"])
         else:
             game_ids = None
         searches, filters, excludes = self.get_sql_filters()
-        games = games_db.get_games(
-            searches=searches,
-            filters=filters,
-            excludes=excludes,
-            sorts=self.sort_params
-        )
+        games = await call_async(games_db.get_games,
+                                 searches=searches,
+                                 filters=filters,
+                                 excludes=excludes,
+                                 sorts=self.sort_params)
         if game_ids is not None:
             return [game for game in games if game["id"] in game_ids]
         return self.apply_view_sort(games)
@@ -587,10 +586,19 @@ class LutrisWindow(Gtk.ApplicationWindow,
             else:
                 self.show_label(_("No games found"))
 
-    def update_store(self, *_args, **_kwargs):
-        self.game_store.store.clear()
+    async def on_game_store_update_needed(self, *_args, **_kwargs):
+        games = await self.populate_store_async(self.game_store)
+        self.update_game_list_ui(games)
+
+    async def populate_store_async(self, game_store: GameStore) -> List[dict]:
+        games = await self.get_games_from_filters_async()
+        game_store.store.clear()
+        for game in games:
+            game_store.add_game(game)
+        return games
+
+    def update_game_list_ui(self, games: List[dict]) -> None:
         self.hide_overlay()
-        games = self.get_games_from_filters()
         if games:
             if len(games) > 1:
                 self.search_entry.set_placeholder_text(_("Search %s games") % len(games))
@@ -601,12 +609,9 @@ class LutrisWindow(Gtk.ApplicationWindow,
         for view in self.views.values():
             view.service = self.service
         GLib.idle_add(self.update_revealer)
-        for game in games:
-            self.game_store.add_game(game)
         if not games:
             self.show_empty_label()
         self.search_timer_id = None
-        return False
 
     def _bind_zoom_adjustment(self):
         """Bind the zoom slider to the supported banner sizes"""
@@ -632,7 +637,7 @@ class LutrisWindow(Gtk.ApplicationWindow,
             media_index = media_services.index(service.default_format)
         icon_type = media_services[media_index]
         if icon_type != self.icon_type:
-            GLib.idle_add(self.save_icon_type, icon_type)
+            GLib.idle_add(self.save_icon_type_async, icon_type)
 
     def show_overlay(self, widget, halign=Gtk.Align.FILL, valign=Gtk.Align.FILL):
         """Display a widget in the blank overlay"""
@@ -718,35 +723,37 @@ class LutrisWindow(Gtk.ApplicationWindow,
         )
         return self.icon_type
 
-    def save_icon_type(self, icon_type):
+    async def save_icon_type_async(self, icon_type):
         """Save icon type to settings"""
         self.icon_type = icon_type
         setting_key = "icon_type_%sview" % self.current_view_type
         if self.service and self.service.id != "lutris":
             setting_key += "_%s" % self.service.id
         settings.write_setting(setting_key, self.icon_type)
-        self.redraw_view()
+        await self.redraw_view_async()
 
-    def redraw_view(self):
+    async def redraw_view_async(self):
         """Completely reconstruct the main view"""
         if not self.game_store:
             logger.error("No game store yet")
             return
-        self.game_store = GameStore(self.service, self.service_media)
+        game_store = GameStore(self.service, self.service_media)
+        games = await self.populate_store_async(game_store)
+        self.game_store = game_store
 
         view_type = self.current_view_type
 
         if view_type in self.views:
             self.current_view = self.views[view_type]
-            self.current_view.set_game_store(self.game_store)
+            self.current_view.set_game_store(game_store)
         else:
             if view_type == "grid":
                 self.current_view = GameGridView(
-                    self.game_store,
+                    game_store,
                     hide_text=settings.read_setting("hide_text_under_icons") == "True"
                 )
             else:
-                self.current_view = GameListView(self.game_store)
+                self.current_view = GameListView(game_store)
 
             self.current_view.connect("game-selected", self.on_game_selection_changed)
             self.current_view.connect("game-activated", self.on_game_activated)
@@ -764,10 +771,11 @@ class LutrisWindow(Gtk.ApplicationWindow,
 
         self.update_view_settings()
         self.games_stack.set_visible_child_name(view_type)
-        self.update_store()
         self.update_action_state()
 
-    def rebuild_view(self, view_type):
+        self.update_game_list_ui(games)
+
+    async def rebuild_view_async(self, view_type):
         """Discards the view named by 'view_type' and if it is the current view,
         regenerates it. This is used to update view settings that can only be
         set during view construction, and not updated later."""
@@ -776,7 +784,7 @@ class LutrisWindow(Gtk.ApplicationWindow,
             scrolledwindow.remove(self.views[view_type])
             del self.views["grid"]
             if self.current_view_type == view_type:
-                self.redraw_view()
+                await self.redraw_view_async()
 
     def update_view_settings(self):
         if self.current_view and self.current_view_type == "grid":
@@ -886,7 +894,7 @@ class LutrisWindow(Gtk.ApplicationWindow,
         if self.search_timer_id:
             GLib.source_remove(self.search_timer_id)
         self.filters["text"] = entry.get_text().lower().strip()
-        self.search_timer_id = GLib.timeout_add(500, self.update_store)
+        self.search_timer_id = GLib.timeout_add(500, self.on_game_store_update_needed)
 
     @GtkTemplate.Callback
     def on_search_entry_key_press(self, widget, event):
@@ -923,13 +931,13 @@ class LutrisWindow(Gtk.ApplicationWindow,
         self.application.show_window(AddGamesWindow, parent=self)
         return True
 
-    def on_toggle_viewtype(self, *args):
+    async def on_toggle_viewtype(self, *args):
         view_type = "list" if self.current_view_type == "grid" else "grid"
         logger.debug("View type changed to %s", view_type)
         self.set_viewtype_icon(view_type)
         settings.write_setting("view_type", view_type)
-        self.redraw_view()
         self._bind_zoom_adjustment()
+        await self.redraw_view_async()
 
     def on_icontype_state_change(self, action, value):
         action.set_state(value)
@@ -958,7 +966,7 @@ class LutrisWindow(Gtk.ApplicationWindow,
         settings.write_setting("side_panel_visible", bool(side_panel_visible))
         self.sidebar_revealer.set_reveal_child(side_panel_visible)
 
-    def on_sidebar_changed(self, widget):
+    async def on_sidebar_changed(self, widget):
         """Handler called when the selected element of the sidebar changes"""
         for filter_type in ("category", "dynamic_category", "service", "runner", "platform"):
             if filter_type in self.filters:
@@ -972,7 +980,7 @@ class LutrisWindow(Gtk.ApplicationWindow,
         service_name = self.filters.get("service")
         self.set_service(service_name)
         self._bind_zoom_adjustment()
-        self.redraw_view()
+        await self.redraw_view_async()
 
     def on_game_selection_changed(self, view, selection):
         if not selection:
@@ -1000,15 +1008,15 @@ class LutrisWindow(Gtk.ApplicationWindow,
         GLib.idle_add(self.update_revealer, games)
         return False
 
-    def on_toggle_badges(self, _widget, _data):
+    async def on_toggle_badges(self, _widget, _data):
         """Event handler to toggle badge visibility"""
         state = settings.read_setting("hide_badges_on_icons").lower() == "true"
         settings.write_setting("hide_badges_on_icons", not state)
-        self.on_settings_changed(None, not state, "hide_badges_on_icons")
+        await self.on_settings_changed(None, not state, "hide_badges_on_icons")
 
-    def on_settings_changed(self, dialog, state, setting_key):
+    async def on_settings_changed(self, dialog, state, setting_key):
         if setting_key == "hide_text_under_icons":
-            self.rebuild_view("grid")
+            await self.rebuild_view_async("grid")
         else:
             self.update_view_settings()
         return True
@@ -1033,7 +1041,7 @@ class LutrisWindow(Gtk.ApplicationWindow,
 
         return True
 
-    def on_game_updated(self, game):
+    async def on_game_updated(self, game):
         """Updates an individual entry in the view when a game is updated"""
         add_to_path_cache(game)
         if game.appid and self.service:
@@ -1046,7 +1054,7 @@ class LutrisWindow(Gtk.ApplicationWindow,
         if db_game:
             updated = self.game_store.update(db_game)
             if not updated:
-                self.update_store()
+                await self.on_game_store_update_needed()
         else:
             logger.debug("Can't get DB game for %s (service: %s)", game, self.service)
 
