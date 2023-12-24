@@ -96,9 +96,9 @@ class LutrisWindow(Gtk.ApplicationWindow,
         self.views = {}
 
         self.dynamic_categories_game_factories = {
-            "recent": self.get_recent_games,
-            "missing": self.get_missing_games,
-            "running": self.get_running_games,
+            "recent": self.get_recent_games_async,
+            "missing": self.get_missing_games_async,
+            "running": self.get_running_games_async,
         }
 
         self.connect("delete-event", self.on_window_delete)
@@ -407,20 +407,16 @@ class LutrisWindow(Gtk.ApplicationWindow,
 
         return sorted(items, key=get_sort_value, reverse=not self.view_sorting_ascending)
 
-    def get_running_games(self):
-        """Return a list of currently running games"""
-        return games_db.get_games_by_ids([game.id for game in self.application.running_games])
-
     def on_get_missing_game_ids(self, missing_ids, error):
         if error:
             logger.error(str(error))
             return
-        self.get_missing_games(missing_ids)
+        async_execute(self.get_missing_games_async(missing_ids))
 
-    def get_missing_games(self, missing_ids: list = None) -> list:
+    async def get_missing_games_async(self, missing_ids: list = None) -> list:
         if missing_ids is None:
             missing_ids = get_missing_game_ids()
-        missing_games = games_db.get_games_by_ids(missing_ids)
+        missing_games = await call_async(games_db.get_games_by_ids, missing_ids)
         if missing_games:
             self.sidebar.missing_row.show()
         else:
@@ -429,15 +425,20 @@ class LutrisWindow(Gtk.ApplicationWindow,
             self.sidebar.missing_row.hide()
         return missing_games
 
-    def get_recent_games(self):
+    async def get_recent_games_async(self):
         """Return a list of currently running games"""
         searches, _filters, excludes = self.get_sql_filters()
-        games = games_db.get_games(searches=searches, filters={'installed': '1'}, excludes=excludes)
+        games = await call_async(games_db.get_games, searches=searches, filters={'installed': '1'}, excludes=excludes)
         return sorted(
             games,
             key=lambda game: max(game["installed_at"] or 0, game["lastplayed"] or 0),
             reverse=True
         )
+
+    async def get_running_games_async(self):
+        """Return a list of currently running games"""
+        game_ids = [game.id for game in self.application.running_games]
+        return await call_async(games_db.get_games_by_ids, game_ids)
 
     def game_matches(self, game):
         if self.filters.get("installed"):
@@ -491,7 +492,7 @@ class LutrisWindow(Gtk.ApplicationWindow,
                 return []
             return self.get_service_games(service_name)
         if self.filters.get("dynamic_category") in self.dynamic_categories_game_factories:
-            return self.dynamic_categories_game_factories[self.filters["dynamic_category"]]()
+            return await self.dynamic_categories_game_factories[self.filters["dynamic_category"]]()
         if self.filters.get("category") and self.filters["category"] != "all":
             game_ids = await call_async(categories_db.get_game_ids_for_category, self.filters["category"])
         else:
@@ -1072,12 +1073,11 @@ class LutrisWindow(Gtk.ApplicationWindow,
     def on_game_installed(self, game):
         return True
 
-    def on_game_removed(self, game):
+    async def on_game_removed(self, game):
         """Simple method used to refresh the view"""
         remove_from_path_cache(game)
-        self.get_missing_games()
         self.emit("view-updated")
-        return True
+        await self.get_missing_games_async()
 
     async def on_game_activated(self, view, game_id):
         """Handles view activations (double click, enter press)"""
