@@ -35,7 +35,7 @@ from lutris.scanners.lutris import add_to_path_cache, get_missing_game_ids, remo
 from lutris.services.base import BaseService
 from lutris.services.lutris import LutrisService
 from lutris.util import datapath
-from lutris.util.jobs import AsyncCall, call_async
+from lutris.util.jobs import call_async
 from lutris.util.log import logger
 from lutris.util.strings import get_natural_sort_key
 from lutris.util.system import update_desktop_icons
@@ -250,11 +250,14 @@ class LutrisWindow(Gtk.ApplicationWindow,
     def selected_category(self):
         return self.sidebar.selected_category
 
-    def on_load(self, widget, data=None):
+    async def on_load(self, widget, data=None):
         """Finish initializing the view"""
         self._bind_zoom_adjustment()
-        AsyncCall(get_missing_game_ids, self.on_get_missing_game_ids)
         self.current_view.grab_focus()
+        try:
+            await self.get_missing_games_async()
+        except Exception as error:
+            logger.error(str(error))
 
     def on_sidebar_realize(self, widget, data=None):
         """Grab the initial focus after the sidebar is initialized - so the view is ready."""
@@ -407,15 +410,8 @@ class LutrisWindow(Gtk.ApplicationWindow,
 
         return sorted(items, key=get_sort_value, reverse=not self.view_sorting_ascending)
 
-    def on_get_missing_game_ids(self, missing_ids, error):
-        if error:
-            logger.error(str(error))
-            return
-        async_execute(self.get_missing_games_async(missing_ids))
-
-    async def get_missing_games_async(self, missing_ids: list = None) -> list:
-        if missing_ids is None:
-            missing_ids = get_missing_game_ids()
+    async def get_missing_games_async(self) -> List[dict]:
+        missing_ids = get_missing_game_ids()
         missing_games = await call_async(games_db.get_games_by_ids, missing_ids)
         if missing_games:
             self.sidebar.missing_row.show()
