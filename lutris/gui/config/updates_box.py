@@ -162,18 +162,12 @@ class UpdatesBox(BaseConfigBox):
         updater.update_runners = True
         component_updaters = updater.create_component_updaters()
         if component_updaters:
-            future = window.start_install_runtime_component_updates(component_updaters, updater)
-
-            if future:
-                self.update_runners_box.show_running_markup(_("<i>Downloading...</i>"))
-                try:
-                    await future
-                    self.apply_wine_update_texts()
-                except Exception as ex:
-                    self.update_runners_box.show_error(ex)
-            else:
-                NoticeDialog(_("Updates are already being downloaded and installed."),
-                             parent=self.get_toplevel())
+            self.update_runners_box.show_running_markup(_("<i>Downloading...</i>"))
+            try:
+                await window.install_runtime_component_updates_async(component_updaters, updater)
+                self.apply_wine_update_texts()
+            except Exception as ex:
+                self.update_runners_box.show_error(ex)
         else:
             self.apply_wine_update_texts(_("No updates are required at this time."))
 
@@ -195,23 +189,17 @@ class UpdatesBox(BaseConfigBox):
         updater = updater_factory()
         component_updaters = updater.create_component_updaters()
         if component_updaters:
-            future = window.start_install_runtime_component_updates(component_updaters, updater)
-
-            if future:
-                update_box.show_running_markup(_("<i>Checking for updates...</i>"))
-                try:
-                    await future
-                    if len(component_updaters) == 1:
-                        update_box.show_completion_markup("", _("1 component has been updated."))
-                    else:
-                        update_box.show_completion_markup("",
-                                                          _("%d components have been updated.") % len(
-                                                              component_updaters))
-                except Exception as ex:
-                    update_box.show_error(ex)
-            else:
-                NoticeDialog(_("Updates are already being downloaded and installed."),
-                             parent=self.get_toplevel())
+            update_box.show_running_markup(_("<i>Checking for updates...</i>"))
+            try:
+                await window.install_runtime_component_updates_async(component_updaters, updater)
+                if len(component_updaters) == 1:
+                    update_box.show_completion_markup("", _("1 component has been updated."))
+                else:
+                    update_box.show_completion_markup("",
+                                                      _("%d components have been updated.") % len(
+                                                          component_updaters))
+            except Exception as ex:
+                update_box.show_error(ex)
         else:
             update_box.show_completion_markup("", _("No updates are required at this time."))
 

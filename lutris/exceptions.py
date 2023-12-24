@@ -49,6 +49,11 @@ class UnspecifiedVersionError(MisconfigurationError):
     """Raised when a version number must be specified, but was not."""
 
 
+class UpdateAlreadyInstallingError(LutrisError):
+    """Raised when placing something in the download queue that's
+    already there."""
+
+
 class MissingExecutableError(MisconfigurationError):
     """Raised when a program can't be located."""
 

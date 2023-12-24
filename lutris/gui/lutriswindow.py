@@ -14,7 +14,7 @@ from lutris.database import categories as categories_db
 from lutris.database import games as games_db
 from lutris.database.services import ServiceGameCollection
 from lutris.exception_backstops import async_execute
-from lutris.exceptions import EsyncLimitError, FsyncUnsupportedError
+from lutris.exceptions import EsyncLimitError, FsyncUnsupportedError, UpdateAlreadyInstallingError
 from lutris.game import Game
 from lutris.gui import dialogs
 from lutris.gui.addgameswindow import AddGamesWindow
@@ -1117,18 +1117,15 @@ class LutrisWindow(Gtk.ApplicationWindow,
         async def install_updates():
             runtime_updater, component_updaters = await call_async(create_updaters)
             if component_updaters:
-                task = self.start_install_runtime_component_updates(component_updaters, runtime_updater)
-                if task:
-                    await task
+                await self.install_runtime_component_updates_async(component_updaters, runtime_updater)
 
         async_execute(install_updates())
 
-    def start_install_runtime_component_updates(self, updaters: List[ComponentUpdater],
-                                                runtime_updater: RuntimeUpdater):
-        """Installs a list of component updates. This displays progress bars
-        in the sidebar as it installs updates, one at a time. This will return None if any of the updates
-        are already running, or a task if it has started the updates; this task completes when the updates
-        have been done."""
+    async def install_runtime_component_updates_async(self, updaters: List[ComponentUpdater],
+                                                      runtime_updater: RuntimeUpdater) -> None:
+        """Installs a list of component updates. This displays progress bars in the sidebar as
+        it installs updates, one at a time. This will raise UpdateAlreadyInstallingError if any of
+        the updates are already running; otherwise it completes when the updates have been done."""
 
         queue = self.download_queue
         operation_names = [f"component_update:{u.name}" for u in updaters]
@@ -1140,9 +1137,9 @@ class LutrisWindow(Gtk.ApplicationWindow,
                     tg.create_task(updater.complete_update_async(runtime_updater))
 
         if queue.check_any_operations_running(operation_names):
-            return None
+            raise UpdateAlreadyInstallingError(_("Updates are already being downloaded and installed."))
 
         coroutine = queue.start_multiple_async(install_updates_async(),
                                                (u.get_progress for u in updaters),
                                                operation_names=operation_names)
-        return asyncio.create_task(coroutine)
+        await asyncio.create_task(coroutine)
