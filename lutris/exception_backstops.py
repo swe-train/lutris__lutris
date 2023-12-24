@@ -52,11 +52,12 @@ def async_execute(coroutine, error_objects: Iterable = None) -> Task:
     a widget that can provide a top-level for the error dialog."""
 
     def on_future_error(fut):
-        err = fut.exception()
-        if err:
-            _handle_error(err,
-                          handler_name=f"function '{coroutine.__name__}'",
-                          error_objects=error_objects)
+        if not fut.cancelled():
+            err = fut.exception()
+            if err:
+                _handle_error(err,
+                              handler_name=f"function '{coroutine.__name__}'",
+                              error_objects=error_objects)
 
     task = asyncio.create_task(coroutine)
     task.add_done_callback(on_future_error)

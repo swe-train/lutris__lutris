@@ -2,17 +2,18 @@ from collections import OrderedDict
 from copy import deepcopy
 from gettext import gettext as _
 
-from gi.repository import GLib, Gtk
+from gi.repository import Gtk
 
 from lutris.config import write_game_config
 from lutris.database.games import add_game
+from lutris.exception_backstops import async_execute
 from lutris.game import Game
 from lutris.gui.dialogs import ModelessDialog
 from lutris.scanners.default_installers import DEFAULT_INSTALLERS
 from lutris.scanners.lutris import get_path_cache
 from lutris.scanners.tosec import clean_rom_name, guess_platform, search_tosec_by_md5
 from lutris.services.lutris import download_lutris_media
-from lutris.util.jobs import AsyncCall
+from lutris.util.jobs import call_async
 from lutris.util.log import logger
 from lutris.util.strings import gtk_safe, slugify
 from lutris.util.system import get_md5_hash, get_md5_in_zip
@@ -33,7 +34,6 @@ class ImportGameDialog(ModelessDialog):
         self.error_labels = {}
         self.launch_buttons = {}
         self.platform = None
-        self.search_call = None
         self.set_size_request(500, 560)
 
         self.accelerators = Gtk.AccelGroup()
@@ -51,12 +51,12 @@ class ImportGameDialog(ModelessDialog):
         self.close_button.add_accelerator("clicked", self.accelerators, key, mod, Gtk.AccelFlags.VISIBLE)
 
         self.show_all()
-        self.search_call = AsyncCall(self.search_checksums, self.search_result_finished)
+        self.search_task = async_execute(self.search_checksums_async())
 
     def on_response(self, dialog, response: Gtk.ResponseType) -> None:
         if response in (Gtk.ResponseType.CLOSE, Gtk.ResponseType.CANCEL, Gtk.ResponseType.DELETE_EVENT):
-            if self.search_call:
-                self.search_call.stop_request.set()
+            if self.search_task:
+                self.search_task.cancel()
                 return  # don't actually close the dialog
 
         super().on_response(dialog, response)
@@ -109,15 +109,13 @@ class ImportGameDialog(ModelessDialog):
 
     @property
     def search_stopping(self):
-        return self.search_call and self.search_call.stop_request.is_set()
+        return self.search_task and self.search_task.cancelled()
 
-    def search_checksums(self):
+    async def search_checksums_async(self):
         game_path_cache = get_path_cache()
 
         def show_progress(filepath, message):
-            # It's not safe to directly update labels from a worker thread, so
-            # this will do it on the GUI main thread instead.
-            GLib.idle_add(lambda: self.progress_labels[filepath].set_markup("<i>%s</i>" % gtk_safe(message)))
+            self.progress_labels[filepath].set_markup("<i>%s</i>" % gtk_safe(message))
 
         def get_existing_game(filepath):
             for game_id, game_path in game_path_cache.items():
@@ -126,52 +124,51 @@ class ImportGameDialog(ModelessDialog):
 
             return None
 
-        def search_single(filepath):
-            existing_game = get_existing_game(filepath)
+        def get_md5(filepath):
+            if filepath.casefold().endswith(".zip"):
+                return get_md5_in_zip(filepath)
+
+            return get_md5_hash(filepath)
+
+        async def search_single_async(filepath):
+            existing_game = await call_async(get_existing_game, filepath)
             if existing_game:
                 # Found a game to launch instead of installing, but we can't safely
                 # do this on this thread, so we return the game and handle it later.
                 return [{"name": existing_game.name, "game": existing_game, "roms": []}]
+
             show_progress(filepath, _("Calculating checksum..."))
-            if filepath.lower().endswith(".zip"):
-                md5 = get_md5_in_zip(filepath)
-            else:
-                md5 = get_md5_hash(filepath)
+            md5 = await call_async(get_md5, filepath)
 
-            if self.search_stopping:
-                return None
-
-            show_progress(filename, _("Looking up checksum on Lutris.net..."))
-            result = search_tosec_by_md5(md5)
+            show_progress(filepath, _("Looking up checksum on Lutris.net..."))
+            result = await call_async(search_tosec_by_md5, md5)
             if not result:
                 raise RuntimeError(_("This ROM could not be identified."))
             return result
 
-        results = OrderedDict()  # must preserve order, on any Python version
-        for filename in self.files:
-            if self.search_stopping:
-                break
+        async def search_async():
+            results = OrderedDict()  # must preserve order, on any Python version
+            for filepath in self.files:
+                if self.search_stopping:
+                    break
 
-            try:
-                show_progress(filename, _("Looking for installed game..."))
-                result = search_single(filename)
-            except Exception as error:
-                result = [{"error": error, "roms": []}]
-            finally:
-                show_progress(filename, "")
+                try:
+                    show_progress(filepath, _("Looking for installed game..."))
+                    result = await search_single_async(filepath)
+                except Exception as error:
+                    result = [{"error": error, "roms": []}]
+                finally:
+                    show_progress(filepath, "")
 
-            if result:
-                results[filename] = result
+                if result:
+                    results[filepath] = result
+            return results
 
-        return results
-
-    def search_result_finished(self, results, error):
-        self.search_call = None
-        self.close_button.set_label(Gtk.STOCK_CLOSE)
-
-        if error:
-            logger.error(error)
-            return
+        try:
+            results = await search_async()
+        finally:
+            self.search_task = None
+            self.close_button.set_label(Gtk.STOCK_CLOSE)
 
         for filename, result in results.items():
             for rom_set in result:

@@ -46,13 +46,13 @@ class AsyncCall(threading.Thread):
 async def call_async(func, *args, **kwargs):
     def on_complete(r, e):
         if e:
-            competed.set_exception(e)
-        else:
-            competed.set_result(r)
+            completed.set_exception(e)
+        elif not completed.cancelled():
+            completed.set_result(r)
 
-    competed = asyncio.get_running_loop().create_future()
+    completed = asyncio.get_running_loop().create_future()
     AsyncCall(func, on_complete, *args, **kwargs)
-    return await competed
+    return await completed
 
 
 def synchronized_call(func, event, result):
