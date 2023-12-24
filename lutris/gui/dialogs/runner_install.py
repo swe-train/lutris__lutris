@@ -11,12 +11,14 @@ from gi.repository import GLib, Gtk
 from lutris import api, settings
 from lutris.api import format_runner_version
 from lutris.database.games import get_games_by_runner
+from lutris.exception_backstops import async_execute
 from lutris.game import Game
 from lutris.gui.dialogs import ErrorDialog, ModelessDialog
 from lutris.gui.widgets.utils import has_stock_icon
-from lutris.util import jobs, system
+from lutris.util import system
 from lutris.util.downloader import Downloader
 from lutris.util.extract import extract_archive
+from lutris.util.jobs import call_async
 from lutris.util.log import logger
 
 
@@ -53,11 +55,8 @@ def get_usage_stats(runner_name):
 class ShowAppsDialog(ModelessDialog):
     def __init__(self, title, parent, runner_name, runner_version):
         super().__init__(title, parent, border_width=10)
-        self.runner_name = runner_name
-        self.runner_version = runner_version
         self.add_default_button(Gtk.STOCK_OK, Gtk.ResponseType.OK)
         self.set_default_size(600, 400)
-        self.apps = []
         label = Gtk.Label.new(_("Showing games using %s") % runner_version)
         self.vbox.add(label)
         scrolled_listbox = Gtk.ScrolledWindow()
@@ -68,24 +67,23 @@ class ShowAppsDialog(ModelessDialog):
         scrolled_listbox.add(self.listbox)
         self.vbox.pack_start(scrolled_listbox, True, True, 14)
         self.show_all()
-        jobs.AsyncCall(self.load_apps, self.on_apps_loaded)
 
-    def load_apps(self):
-        runner_games = get_games_by_runner(self.runner_name)
+        async_execute(self.load_games_async(runner_name, runner_version))
+
+    async def load_games_async(self, runner_name: str, runner_version: str) -> None:
+        runner_games = await call_async(get_games_by_runner, runner_name)
+
         for db_game in runner_games:
             if not db_game["installed"]:
                 continue
             game = Game(db_game["id"])
             version = game.config.runner_config["version"]
-            if version != self.runner_version:
+            if version != runner_version:
                 continue
-            self.apps.append(game)
 
-    def on_apps_loaded(self, _result, _error):
-        for app in self.apps:
             row = Gtk.ListBoxRow(visible=True)
             hbox = Gtk.Box(visible=True, orientation=Gtk.Orientation.HORIZONTAL)
-            lbl_game = Gtk.Label(app.name, visible=True)
+            lbl_game = Gtk.Label(game.name, visible=True)
             lbl_game.set_halign(Gtk.Align.START)
             hbox.pack_start(lbl_game, True, True, 5)
             row.add(hbox)
@@ -125,15 +123,14 @@ class RunnerInstallDialog(ModelessDialog):
 
         self.show_all()
 
-        jobs.AsyncCall(self.fetch_runner_versions, self.runner_fetch_cb, self.runner_name, self.runner_directory)
+        async_execute(self.load_runner_versions_async(self.runner_name, self.runner_directory))
 
-    @staticmethod
-    def fetch_runner_versions(runner_name, runner_directory):
-        runner_info = api.get_runners(runner_name)
+    async def load_runner_versions_async(self, runner_name, runner_directory):
+        runner_info = await call_async(api.get_runners, runner_name)
         runner_info["runner_name"] = runner_name
         runner_info["runner_directory"] = runner_directory
         remote_versions = {(v["version"], v["architecture"]) for v in runner_info["versions"]}
-        local_versions = get_installed_versions(runner_directory)
+        local_versions = await call_async(get_installed_versions, runner_directory)
         for local_version in local_versions - remote_versions:
             runner_info["versions"].append({
                 "version": local_version[0],
@@ -141,44 +138,8 @@ class RunnerInstallDialog(ModelessDialog):
                 "url": "",
             })
 
-        return runner_info, RunnerInstallDialog.fetch_runner_store(runner_info)
-
-    @staticmethod
-    def fetch_runner_store(runner_info):
-        """Return a list populated with the runner versions"""
-        runner_store = []
-        runner_name = runner_info["runner_name"]
-        runner_directory = runner_info["runner_directory"]
-        version_usage = get_usage_stats(runner_name)
-        ordered = sorted(runner_info["versions"], key=RunnerInstallDialog.get_version_sort_key)
-        for version_info in reversed(ordered):
-            is_installed = os.path.exists(
-                get_runner_path(runner_directory, version_info["version"], version_info["architecture"]))
-            games_using = version_usage.get("%(version)s-%(architecture)s" % version_info)
-            runner_store.append(
-                {
-                    "version": version_info["version"],
-                    "architecture": version_info["architecture"],
-                    "url": version_info["url"],
-                    "is_installed": is_installed,
-                    "progress": 0,
-                    "game_count": len(games_using) if games_using else 0
-                }
-            )
-        return runner_store
-
-    def runner_fetch_cb(self, result, error):
-        """Clear the box and display versions from runner_info"""
-        if error:
-            logger.error(error)
-            ErrorDialog(_("Unable to get runner versions: %s") % error)
-            return
-
-        self.runner_info, self.runner_store = result
-
-        if not self.runner_info:
-            ErrorDialog(_("Unable to get runner versions from lutris.net"))
-            return
+        self.runner_store = await call_async(self.fetch_runner_store, runner_info)
+        self.runner_info = runner_info
 
         for child_widget in self.vbox.get_children():
             if child_widget.get_name() not in "GtkBox":
@@ -197,6 +158,30 @@ class RunnerInstallDialog(ModelessDialog):
         self.vbox.pack_start(scrolled_listbox, True, True, 14)
         self.show_all()
         self.populate_listboxrows()
+
+    @staticmethod
+    def fetch_runner_store(result):
+        """Return a list populated with the runner versions"""
+        runner_store = []
+        runner_name = result["runner_name"]
+        runner_directory = result["runner_directory"]
+        version_usage = get_usage_stats(runner_name)
+        ordered = sorted(result["versions"], key=RunnerInstallDialog.get_version_sort_key)
+        for version_info in reversed(ordered):
+            is_installed = os.path.exists(
+                get_runner_path(runner_directory, version_info["version"], version_info["architecture"]))
+            games_using = version_usage.get("%(version)s-%(architecture)s" % version_info)
+            runner_store.append(
+                {
+                    "version": version_info["version"],
+                    "architecture": version_info["architecture"],
+                    "url": version_info["url"],
+                    "is_installed": is_installed,
+                    "progress": 0,
+                    "game_count": len(games_using) if games_using else 0
+                }
+            )
+        return runner_store
 
     def populate_listboxrows(self):
         for runner in self.runner_store:
@@ -357,12 +342,12 @@ class RunnerInstallDialog(ModelessDialog):
             ErrorDialog(_("Version %s is not longer available") % version)
             return
         downloader = Downloader(url, dest_path, overwrite=True)
-        GLib.timeout_add(100, self.get_progress, downloader, row)
+        GLib.timeout_add(100, self.get_download_progress, downloader, row)
         self.installing[version] = downloader
         downloader.start()
         self.update_listboxrow(row)
 
-    def get_progress(self, downloader, row):
+    def get_download_progress(self, downloader, row):
         """Update progress bar with download progress"""
         runner = row.runner
         if downloader.state == downloader.CANCELLED:
@@ -383,16 +368,17 @@ class RunnerInstallDialog(ModelessDialog):
         if downloader.state == downloader.COMPLETED:
             runner["progress"] = 99
             row.install_progress.set_text = _("Extracting…")
-            self.on_runner_downloaded(row)
+            async_execute(self.extract_runner_async(row))
             return False
         return True
 
-    def progress_pulse(self, row):
+    @staticmethod
+    def pulse_extract_progress(row):
         runner = row.runner
         row.install_progress.pulse()
         return not runner["is_installed"]
 
-    def on_runner_downloaded(self, row):
+    async def extract_runner_async(self, row):
         """Handler called when a runner version is downloaded"""
         runner = row.runner
         version = runner["version"]
@@ -400,23 +386,12 @@ class RunnerInstallDialog(ModelessDialog):
         logger.debug("Runner %s for %s has finished downloading", version, architecture)
         src = self.get_dest_path(runner)
         dst = get_runner_path(self.runner_directory, version, architecture)
-        GLib.timeout_add(100, self.progress_pulse, row)
-        jobs.AsyncCall(self.extract, self.on_extracted, src, dst, row)
 
-    @staticmethod
-    def extract(src, dst, row):
-        """Extract a runner archive to a destination"""
-        extract_archive(src, dst)
-        return src, row
-
-    def on_extracted(self, row_info, error):
-        """Called when a runner archive is extracted"""
-        if error or not row_info:
-            ErrorDialog(_("Failed to retrieve the runner archive"), parent=self)
-            return
-        src, row = row_info
-        runner = row.runner
+        GLib.timeout_add(100, self.pulse_extract_progress, row)
+        await call_async(extract_archive, src, dst)
         os.remove(src)
+
+        runner = row.runner
         runner["progress"] = 0
         runner["is_installed"] = True
         self.installing.pop(runner["version"])
