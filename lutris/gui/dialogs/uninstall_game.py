@@ -100,13 +100,11 @@ class UninstallMultipleGamesDialog(Gtk.Dialog):
             if game in new_games and game.is_installed and game.directory:
                 folders_to_size.add(game.directory)
                 row.show_folder_size_spinner()
-            if can_delete_files and row.can_show_folder_size:
-                games_to_size.add(game)
 
             self.uninstall_game_list.add(row)
 
-        if games_to_size:
-            async_execute(self._update_folder_sizes_async(games_to_size))
+        if folders_to_size:
+            async_execute(self._update_folder_sizes_async(folders_to_size))
 
     def update_subtitle(self) -> None:
         """Updates the dialog subtitle according to what games are being removed."""
@@ -270,9 +268,9 @@ class UninstallMultipleGamesDialog(Gtk.Dialog):
         if response in (Gtk.ResponseType.DELETE_EVENT, Gtk.ResponseType.CANCEL, Gtk.ResponseType.OK):
             self.destroy()
 
-    async def _update_folder_sizes_async(self, games_to_size: Set[Game]) -> None:
+    async def _update_folder_sizes_async(self, folders_to_size: Set[str]) -> None:
         for row in self.uninstall_game_list.get_children():
-            if row.game in games_to_size and row.game.directory:
+            if row.game.directory in folders_to_size and row.game.directory:
                 size = await call_async(get_disk_size, row.game.directory)
                 row.show_folder_size(size)
 
