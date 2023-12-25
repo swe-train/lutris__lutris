@@ -406,7 +406,7 @@ class Runner:  # pylint: disable=too-many-public-methods
         command = command_data.get("command")
         env = (command_data.get("env") or {}).copy()
 
-        self.prelaunch()
+        await call_async(self.prelaunch)
 
         command_runner = MonitoredCommand(command, runner=self, env=env)
         command_runner.start()
