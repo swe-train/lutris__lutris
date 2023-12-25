@@ -19,7 +19,7 @@ from lutris.gui.widgets.notifications import send_notification
 from lutris.gui.widgets.scaled_image import ScaledImage
 from lutris.gui.widgets.utils import get_image_file_format, invalidate_media_caches
 from lutris.runners import import_runner
-from lutris.services.lutris import LutrisBanner, LutrisCoverart, LutrisIcon, download_lutris_media
+from lutris.services.lutris import LutrisBanner, LutrisCoverart, LutrisIcon, download_lutris_media_async
 from lutris.util.log import logger
 from lutris.util.strings import gtk_safe, parse_playtime, slugify
 
@@ -370,19 +370,19 @@ class GameDialogCommon(SavableModelessDialog, DialogInstallUIDelegate):
             runner_liststore.append(("%s (%s)" % (runner.human_name, description), runner.name))
         return runner_liststore
 
-    def on_slug_change_clicked(self, widget):
+    async def on_slug_change_clicked(self, widget):
         if self.slug_entry.get_sensitive() is False:
             widget.set_label(_("Apply"))
             self.slug_entry.set_sensitive(True)
         else:
-            self.change_game_slug()
+            await self.change_game_slug_async()
 
-    def on_slug_entry_activate(self, _widget):
-        self.change_game_slug()
+    async def on_slug_entry_activate(self, _widget):
+        await self.change_game_slug_async()
 
-    def change_game_slug(self):
+    async def change_game_slug_async(self):
         slug = self.slug_entry.get_text()
-        download_lutris_media(slug)
+        await download_lutris_media_async(slug)
 
         self.slug = slug
         for image_type, image_button in self.image_buttons.items():
@@ -723,15 +723,14 @@ class GameDialogCommon(SavableModelessDialog, DialogInstallUIDelegate):
 
         dialog.destroy()
 
-    def on_custom_image_reset_clicked(self, _widget, image_type):
+    async def on_custom_image_reset_clicked(self, _widget, image_type):
         slug = self.slug or self.game.slug
         service_media = self.service_medias[image_type]
         dest_path = service_media.get_media_path(slug)
         self.game.custom_images.discard(image_type)
         if os.path.isfile(dest_path):
             os.remove(dest_path)
-        download_lutris_media(self.game.slug)
-        invalidate_media_caches()
+        await download_lutris_media_async(self.game.slug)
         self._set_image(image_type, self.image_buttons[image_type])
 
 

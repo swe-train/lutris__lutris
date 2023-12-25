@@ -17,10 +17,10 @@ from lutris.installer.errors import MissingGameDependency, ScriptingError
 from lutris.installer.installer import LutrisInstaller
 from lutris.installer.legacy import get_game_launcher
 from lutris.runners import NonInstallableRunnerError, RunnerInstallationError, steam, wine
-from lutris.services.lutris import download_lutris_media
+from lutris.services.lutris import download_lutris_media_async
 from lutris.util import system
 from lutris.util.display import DISPLAY_MANAGER
-from lutris.util.jobs import AsyncCall, call_async
+from lutris.util.jobs import call_async
 from lutris.util.log import logger
 from lutris.util.strings import unpack_dependencies
 
@@ -344,7 +344,7 @@ class ScriptInterpreter(GObject.Object, CommandsMixin):
                         await asyncio.create_task(result)
                 else:
                     logger.debug("Commands %d out of %s completed", self.current_command, len(commands))
-                    self._finish_install()
+                    await self._finish_install_async()
                     break
         except Exception as ex:
             # Redirect errors to the delegate, instead of the default ErrorDialog.
@@ -371,7 +371,7 @@ class ScriptInterpreter(GObject.Object, CommandsMixin):
             raise ScriptingError(_('The command "%s" does not exist.') % command_name)
         return getattr(self, command_name), command_params
 
-    def _finish_install(self):
+    async def _finish_install_async(self):
         game_id = self.installer.save()
 
         launcher_value = None
@@ -395,7 +395,7 @@ class ScriptInterpreter(GObject.Object, CommandsMixin):
             logger.warning("No executable found at specified location %s", path)
         else:
             status = (self.installer.script.get("install_complete_text") or _("Installation completed!"))
-        AsyncCall(download_lutris_media, None, self.installer.game_slug)
+        await download_lutris_media_async(self.installer.game_slug)
         self.interpreter_ui_delegate.report_finished(game_id, status)
 
     def cleanup(self):

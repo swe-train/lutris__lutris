@@ -14,6 +14,7 @@ from lutris.gui.views.media_loader import download_media
 from lutris.services.base import LutrisBanner, LutrisCoverart, LutrisCoverartMedium, LutrisIcon, OnlineService
 from lutris.services.service_game import ServiceGame
 from lutris.util import http
+from lutris.util.jobs import call_async
 from lutris.util.log import logger
 
 
@@ -152,27 +153,30 @@ class LutrisService(OnlineService):
         return None
 
 
-def download_lutris_media(slug):
+async def download_lutris_media_async(slug):
     """Download all media types for a single lutris game"""
-    url = settings.SITE_URL + "/api/games/%s" % slug
-    request = http.Request(url)
-    try:
-        response = request.get()
-    except http.HTTPError as ex:
-        logger.debug("Unable to load %s: %s", slug, ex)
-        return
-    response_data = response.json
-    icon_url = response_data.get("icon_url")
-    if icon_url:
-        download_media({slug: icon_url}, LutrisIcon())
+    def download():
+        url = settings.SITE_URL + "/api/games/%s" % slug
+        request = http.Request(url)
+        try:
+            response = request.get()
+        except http.HTTPError as ex:
+            logger.debug("Unable to load %s: %s", slug, ex)
+            return
+        response_data = response.json
+        icon_url = response_data.get("icon_url")
+        if icon_url:
+            download_media({slug: icon_url}, LutrisIcon())
 
-    banner_url = response_data.get("banner_url")
-    if banner_url:
-        download_media({slug: banner_url}, LutrisBanner())
+        banner_url = response_data.get("banner_url")
+        if banner_url:
+            download_media({slug: banner_url}, LutrisBanner())
 
-    cover_url = response_data.get("coverart")
-    if cover_url:
-        download_media({slug: cover_url}, LutrisCoverart())
+        cover_url = response_data.get("coverart")
+        if cover_url:
+            download_media({slug: cover_url}, LutrisCoverart())
+
+    await call_async(download)
 
 
 def sync_media() -> dict:

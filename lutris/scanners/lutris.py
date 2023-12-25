@@ -6,10 +6,11 @@ from functools import lru_cache
 from lutris import settings
 from lutris.api import get_api_games, get_game_installers
 from lutris.database.games import get_games
+from lutris.exception_backstops import async_execute
 from lutris.game import Game
 from lutris.installer.errors import MissingGameDependency
 from lutris.installer.interpreter import ScriptInterpreter
-from lutris.services.lutris import download_lutris_media
+from lutris.services.lutris import download_lutris_media_async
 from lutris.util.log import logger
 from lutris.util.strings import slugify
 
@@ -96,7 +97,7 @@ def scan_directory(dirname):
                 install_game(installer, game_folder)
             except MissingGameDependency as ex:
                 logger.error("Skipped %s: %s", api_game["name"], ex)
-            download_lutris_media(installer["game_slug"])
+            async_execute(download_lutris_media_async, installer["game_slug"])
             slugs_installed.add(api_game["slug"])
 
     installed_map = {slug: folder for slug, folder in slugs_map.items() if slug in slugs_installed}

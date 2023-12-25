@@ -12,7 +12,7 @@ from lutris.gui.dialogs import ModelessDialog
 from lutris.scanners.default_installers import DEFAULT_INSTALLERS
 from lutris.scanners.lutris import get_path_cache
 from lutris.scanners.tosec import clean_rom_name, guess_platform, search_tosec_by_md5
-from lutris.services.lutris import download_lutris_media
+from lutris.services.lutris import download_lutris_media_async
 from lutris.util.jobs import call_async
 from lutris.util.log import logger
 from lutris.util.strings import gtk_safe, slugify
@@ -172,10 +172,10 @@ class ImportGameDialog(ModelessDialog):
 
         for filename, result in results.items():
             for rom_set in result:
-                if self.import_rom(rom_set, filename):
+                if await self.import_rom_async(rom_set, filename):
                     break
 
-    def import_rom(self, rom_set, filename):
+    async def import_rom_async(self, rom_set, filename):
         """Tries to install a specific ROM, or reports failure. Returns True if
         successful, False if not."""
         try:
@@ -192,7 +192,7 @@ class ImportGameDialog(ModelessDialog):
 
             for rom in rom_set["roms"]:
                 self.display_new_game_info(filename, rom_set, rom["md5"])
-                game_id = self.add_game(rom_set, filename)
+                game_id = await self.add_game_async(rom_set, filename)
                 game = Game(game_id)
                 game.emit("game-installed")
                 game.emit("game-updated")
@@ -242,7 +242,7 @@ class ImportGameDialog(ModelessDialog):
         if not self.platform:
             raise RuntimeError(_("The platform '%s' is unknown to Lutris.") % category)
 
-    def add_game(self, rom_set, filepath):
+    async def add_game_async(self, rom_set, filepath):
         name = clean_rom_name(rom_set["name"])
         logger.info("Installing %s", name)
 
@@ -266,5 +266,5 @@ class ImportGameDialog(ModelessDialog):
             installer_slug="%s-%s" % (slug, installer["runner"]),
             configpath=configpath
         )
-        download_lutris_media(slug)
+        await download_lutris_media_async(slug)
         return game_id

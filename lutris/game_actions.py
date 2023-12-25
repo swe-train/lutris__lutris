@@ -20,7 +20,7 @@ from lutris.gui.dialogs import InputDialog
 from lutris.gui.dialogs.log import LogWindow
 from lutris.gui.dialogs.uninstall_game import UninstallMultipleGamesDialog
 from lutris.gui.widgets.utils import open_uri
-from lutris.services.lutris import download_lutris_media
+from lutris.services.lutris import download_lutris_media_async
 from lutris.util import xdgshortcuts
 from lutris.util.log import logger
 from lutris.util.steam import shortcut as steam_shortcut
@@ -290,7 +290,7 @@ class GameActions(BaseGameActions):
         for game in self.games:
             update_shader_cache(game)
 
-    def on_game_duplicate(self, _widget):
+    async def on_game_duplicate(self, _widget):
         for game in self.games:
             base_name = game.name.strip().rstrip("0123456789").rstrip()
             if not base_name:
@@ -339,7 +339,7 @@ class GameActions(BaseGameActions):
             db_game.pop("service_id", None)
 
             game_id = add_game(**db_game)
-            download_lutris_media(db_game["slug"])
+            await download_lutris_media_async(db_game["slug"])
             new_game = Game(game_id)
             new_game.save()
 
