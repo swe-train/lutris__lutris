@@ -216,13 +216,12 @@ class CommandsMixin:
         """Display an input request as a dropdown menu with options."""
         self._check_required_params("options", data, "input_menu")
         identifier = data.get("id")
-        alias = "INPUT_%s" % identifier if identifier else None
         options = data["options"]
         preselect = self._substitute(data.get("preselect", ""))
 
-        def _on_input_menu_validated(self, alias, menu):
-            chosen_option = menu.get_active_id()
+        def _on_input_menu_validated(self, chosen_option):
             if chosen_option:
+                alias = "INPUT_%s" % identifier if identifier else None
                 self.user_inputs.append({"alias": alias, "value": chosen_option})
                 completed.set_result(None)
             else:
@@ -230,7 +229,7 @@ class CommandsMixin:
                     RuntimeError("A required input option was not selected, so the installation can't continue."))
 
         completed = self.running_loop.create_future()
-        self.interpreter_ui_delegate.begin_input_menu(alias, options, preselect, _on_input_menu_validated)
+        self.interpreter_ui_delegate.begin_input_menu(options, preselect, _on_input_menu_validated)
         return completed
 
     def insert_disc(self, data):
@@ -248,7 +247,7 @@ class CommandsMixin:
               "<i>%s</i>") % requires
         )
 
-        def _find_matching_disc(self, _widget, requires, extra_path=None):
+        def _find_matching_disc(self, _widget, extra_path=None):
             if extra_path:
                 drives = [extra_path]
             else:
@@ -266,7 +265,7 @@ class CommandsMixin:
                 RuntimeError(_("The required file '%s' could not be located.") % requires))
 
         completed = self.running_loop.create_future()
-        self.interpreter_ui_delegate.begin_disc_prompt(message, requires, self.installer,
+        self.interpreter_ui_delegate.begin_disc_prompt(message, self.installer,
                                                        _find_matching_disc)
         return completed
 

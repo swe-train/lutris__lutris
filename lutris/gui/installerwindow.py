@@ -305,11 +305,11 @@ class InstallerWindow(ModelessDialog,
         command.set_log_buffer(self.log_buffer)
         GLib.idle_add(self.load_log_page)
 
-    def begin_disc_prompt(self, message, requires, installer, callback):
-        GLib.idle_add(self.load_ask_for_disc_page, message, requires, installer, callback, )
+    def begin_disc_prompt(self, message, installer, callback):
+        GLib.idle_add(self.load_ask_for_disc_page, message, installer, callback, )
 
-    def begin_input_menu(self, alias, options, preselect, callback):
-        GLib.idle_add(self.load_input_menu_page, alias, options, preselect, callback)
+    def begin_input_menu(self, options, preselect, callback):
+        GLib.idle_add(self.load_input_menu_page, options, preselect, callback)
 
     def report_finished(self, game_id, status):
         GLib.idle_add(self.load_finish_install_page, game_id, status)
@@ -731,13 +731,13 @@ class InstallerWindow(ModelessDialog,
     # back into a callback when the user makes a choice. This is summoned
     # by the installer script as well.
 
-    def load_input_menu_page(self, alias, options, preselect, callback):
+    def load_input_menu_page(self, options, preselect, callback):
         def present_input_menu_page():
             """Display an input request as a dropdown menu with options."""
 
             def on_continue(_button):
                 try:
-                    callback(alias, combobox)
+                    callback(combobox.get_active_id())
                     self.stack.restore_current_page(previous_page)
                 except Exception as err:
                     # If the callback fails, the installation does not continue
@@ -779,7 +779,7 @@ class InstallerWindow(ModelessDialog,
     # This page asks the user for a disc; it also has a callback used when
     # the user selects a disc. Again, this is summoned by the installer script.
 
-    def load_ask_for_disc_page(self, message, requires, installer, callback):
+    def load_ask_for_disc_page(self, message, installer, callback):
         def present_ask_for_disc_page():
             """Ask the user to do insert a CD-ROM."""
 
@@ -802,13 +802,12 @@ class InstallerWindow(ModelessDialog,
             vbox.pack_start(buttons_box, False, False, 0)
 
             autodetect_button = Gtk.Button(label=_("Autodetect"))
-            autodetect_button.connect("clicked", wrapped_callback, requires)
+            autodetect_button.connect("clicked", wrapped_callback)
             autodetect_button.grab_focus()
             buttons_box.pack_start(autodetect_button, True, True, 40)
 
             browse_button = Gtk.Button(label=_("Browse…"))
-            callback_data = {"callback": wrapped_callback, "requires": requires}
-            browse_button.connect("clicked", self.on_browse_clicked, callback_data)
+            browse_button.connect("clicked", self.on_browse_clicked, wrapped_callback)
             buttons_box.pack_start(browse_button, True, True, 40)
 
             self.stack.present_replacement_page("ask_for_disc", vbox)
@@ -824,12 +823,10 @@ class InstallerWindow(ModelessDialog,
         previous_page = self.stack.save_current_page()
         self.stack.jump_to_page(present_ask_for_disc_page)
 
-    def on_browse_clicked(self, widget, callback_data):
+    def on_browse_clicked(self, widget, callback):
         dialog = DirectoryDialog(_("Select the folder where the disc is mounted"), parent=self)
         folder = dialog.folder
-        callback = callback_data["callback"]
-        requires = callback_data["requires"]
-        callback(widget, requires, folder)
+        callback(widget, folder)
 
     def on_eject_clicked(self, _widget, data=None):
         self.interpreter.eject_wine_disc()

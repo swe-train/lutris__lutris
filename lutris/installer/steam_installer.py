@@ -77,7 +77,7 @@ class SteamInstaller(GObject.Object):
         try:
             self.runner.install_game(self.appid)
         except Exception as ex:
-            raise ScriptingError(str(ex))
+            raise ScriptingError(str(ex)) from ex
 
     def get_steam_data_path(self):
         """Return path of Steam files"""

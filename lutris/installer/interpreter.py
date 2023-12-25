@@ -50,12 +50,12 @@ class ScriptInterpreter(GObject.Object, CommandsMixin):
         def attach_log(self, command):
             """Called to attach the command to a log UI, so its log output can be viewed."""
 
-        def begin_disc_prompt(self, message, requires, installer, callback):
+        def begin_disc_prompt(self, message, installer, callback):
             """Called to prompt for a disc. When the disc is provided, the callback is invoked.
             The method returns immediately, however."""
             raise NotImplementedError()
 
-        def begin_input_menu(self, alias, options, preselect, callback):
+        def begin_input_menu(self, options, preselect, callback):
             """Called to prompt the user to select among a list of options. When the user
             does so, the callback is invoked. The method returns immediately, however."""
             raise NotImplementedError()
