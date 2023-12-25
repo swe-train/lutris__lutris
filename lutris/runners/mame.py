@@ -3,9 +3,10 @@ import os
 from gettext import gettext as _
 
 from lutris import runtime, settings
+from lutris.exception_backstops import async_execute
 from lutris.runners.runner import Runner
 from lutris.util import system
-from lutris.util.jobs import AsyncCall
+from lutris.util.jobs import call_async
 from lutris.util.log import logger
 from lutris.util.mame.database import get_supported_systems
 from lutris.util.strings import split_arguments
@@ -14,25 +15,27 @@ MAME_CACHE_DIR = os.path.join(settings.CACHE_DIR, "mame")
 MAME_XML_PATH = os.path.join(MAME_CACHE_DIR, "mame.xml")
 
 
-def write_mame_xml(force=False):
-    if not system.path_exists(MAME_CACHE_DIR):
-        system.create_folder(MAME_CACHE_DIR)
-    if system.path_exists(MAME_XML_PATH, exclude_empty=True) and not force:
-        return False
-    logger.info("Writing full game list from MAME to %s", MAME_XML_PATH)
-    mame_inst = mame()
-    mame_inst.write_xml_list()
-    if system.get_disk_size(MAME_XML_PATH) == 0:
-        logger.warning("MAME did not write anything to %s", MAME_XML_PATH)
-        return False
-    return True
+async def write_mame_xml_async(force: bool = False) -> bool:
+    def write_xml():
+        if not system.path_exists(MAME_CACHE_DIR):
+            system.create_folder(MAME_CACHE_DIR)
+        if system.path_exists(MAME_XML_PATH, exclude_empty=True) and not force:
+            return False
+        logger.info("Writing full game list from MAME to %s", MAME_XML_PATH)
+        mame_inst = mame()
+        mame_inst.write_xml_list()
+        if system.get_disk_size(MAME_XML_PATH) == 0:
+            logger.warning("MAME did not write anything to %s", MAME_XML_PATH)
+            return False
 
-
-def notify_mame_xml(result, error):
-    if error:
-        logger.error("Failed writing MAME XML")
-    elif result:
         logger.info("Finished writing MAME XML")
+        return True
+
+    try:
+        return await call_async(write_xml)
+    except Exception as ex:
+        logger.exception("Failed writing MAME XML: %s", ex)
+        return False
 
 
 def get_system_choices(include_year=True):
@@ -40,7 +43,7 @@ def get_system_choices(include_year=True):
     if not system.path_exists(MAME_XML_PATH, exclude_empty=True):
         mame_inst = mame()
         if mame_inst.is_installed():
-            AsyncCall(write_mame_xml, notify_mame_xml)
+            async_execute(write_mame_xml_async())
         return []
     for system_id, info in sorted(
         get_supported_systems(MAME_XML_PATH).items(),
@@ -55,7 +58,7 @@ def get_system_choices(include_year=True):
             template += " %(year)s"
         system_name = template % info
         system_name = system_name.replace("<generic>", "").strip()
-        yield (system_name, system_id)
+        yield system_name, system_id
 
 
 class mame(Runner):  # pylint: disable=invalid-name
@@ -234,7 +237,7 @@ class mame(Runner):  # pylint: disable=invalid-name
         if not await super().install_runner_async(install_ui_delegate, version=version):
             return False
 
-        AsyncCall(write_mame_xml, notify_mame_xml)
+        await write_mame_xml_async(force=True)
         return True
 
     @property
