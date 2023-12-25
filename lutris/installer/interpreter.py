@@ -1,5 +1,7 @@
 """Install a game by following its install script."""
+import asyncio
 import os
+from asyncio import iscoroutine, isfuture
 from gettext import gettext as _
 
 from gi.repository import GObject
@@ -7,6 +9,7 @@ from gi.repository import GObject
 from lutris import settings
 from lutris.config import LutrisConfig
 from lutris.database.games import get_game_by_field
+from lutris.exception_backstops import async_execute
 from lutris.exceptions import MisconfigurationError
 from lutris.installer import AUTO_EXE_PREFIX
 from lutris.installer.commands import CommandsMixin
@@ -17,7 +20,7 @@ from lutris.runners import NonInstallableRunnerError, RunnerInstallationError, s
 from lutris.services.lutris import download_lutris_media
 from lutris.util import system
 from lutris.util.display import DISPLAY_MANAGER
-from lutris.util.jobs import AsyncCall
+from lutris.util.jobs import AsyncCall, call_async
 from lutris.util.log import logger
 from lutris.util.strings import unpack_dependencies
 
@@ -61,8 +64,9 @@ class ScriptInterpreter(GObject.Object, CommandsMixin):
             """Called to report the successful completion of the installation."""
             logger.info("Installation of game %s completed.", game_id)
 
-    def __init__(self, installer, interpreter_ui_delegate=None):
-        super().__init__()
+    def __init__(self, installer, running_loop=None, interpreter_ui_delegate=None):
+        GObject.Object.__init__(self)
+        CommandsMixin.__init__(self, running_loop=running_loop or asyncio.get_running_loop())
         self.target_path = None
         self.interpreter_ui_delegate = interpreter_ui_delegate or ScriptInterpreter.InterpreterUIDelegate()
         self.service = self.interpreter_ui_delegate.service
@@ -296,50 +300,52 @@ class ScriptInterpreter(GObject.Object, CommandsMixin):
             self.installer.script["installer"].append(
                 {"copy": {"src": extra, "dst": "$GAMEDIR/extras"}}
             )
-        self._iter_commands()
 
-    def _iter_commands(self, result=None, exception=None):
-        if result == "STOP" or self.cancelled:
-            return
+        async_execute(self._iter_commands_async())
 
+    async def _iter_commands_async(self):
         try:
-            commands = self.installer.script.get("installer", [])
-            if exception:
-                logger.error("Last install command failed, show error")
-                self.interpreter_ui_delegate.report_error(exception)
-            elif self.current_command < len(commands):
-                try:
-                    command = commands[self.current_command]
-                except KeyError as err:
-                    raise ScriptingError(_("Installer commands are not formatted correctly")) from err
-                self.current_command += 1
-                method, params = self._map_command(command)
-                if isinstance(params, dict):
-                    status_text = params.pop("description", None)
-                else:
-                    status_text = None
-                if status_text:
-                    self.interpreter_ui_delegate.report_status(status_text)
-                logger.debug("Installer command: %s", command)
+            while not self.cancelled:
+                commands = self.installer.script.get("installer", [])
+                if self.current_command < len(commands):
+                    try:
+                        command = commands[self.current_command]
+                    except KeyError as err:
+                        raise ScriptingError(_("Installer commands are not formatted correctly")) from err
+                    self.current_command += 1
+                    method, params = self._map_command(command)
+                    if isinstance(params, dict):
+                        status_text = params.pop("description", None)
+                    else:
+                        status_text = None
+                    if status_text:
+                        self.interpreter_ui_delegate.report_status(status_text)
+                    logger.debug("Installer command: %s", command)
 
-                if self.target_path and os.path.exists(self.target_path):
-                    # Establish a CWD for the command, but remove it afterwards
-                    # for safety. We'd better not rely on this, many tasks can be
-                    # fiddling with the CWD at the same time.
-                    def dispatch():
-                        prev_cwd = os.getcwd()
-                        os.chdir(self.target_path)
-                        try:
-                            return method(params)
-                        finally:
-                            os.chdir(prev_cwd)
+                    if self.target_path and os.path.exists(self.target_path):
+                        # Establish a CWD for the command, but remove it afterwards
+                        # for safety. We'd better not rely on this, many tasks can be
+                        # fiddling with the CWD at the same time.
+                        def dispatch():
+                            prev_cwd = os.getcwd()
+                            os.chdir(self.target_path)
+                            try:
+                                return method(params)
+                            finally:
+                                os.chdir(prev_cwd)
 
-                    AsyncCall(dispatch, self._iter_commands)
+                        result = await call_async(dispatch)
+                    else:
+                        result = await call_async(method, params)
+
+                    if isfuture(result):
+                        await result
+                    elif iscoroutine(result):
+                        await asyncio.create_task(result)
                 else:
-                    AsyncCall(method, self._iter_commands, params)
-            else:
-                logger.debug("Commands %d out of %s completed", self.current_command, len(commands))
-                self._finish_install()
+                    logger.debug("Commands %d out of %s completed", self.current_command, len(commands))
+                    self._finish_install()
+                    break
         except Exception as ex:
             # Redirect errors to the delegate, instead of the default ErrorDialog.
             self.interpreter_ui_delegate.report_error(ex)

@@ -30,6 +30,9 @@ class CommandsMixin:
     # pylint: disable=no-member
     installer: LutrisInstaller = NotImplemented
 
+    def __init__(self, running_loop):
+        self.running_loop = running_loop
+
     def get_wine_path(self) -> str:
         """Return absolute path of wine version used during the installation, but
         None if the wine exe can't be located."""
@@ -177,8 +180,10 @@ class CommandsMixin:
         command.accepted_return_code = return_code
         command.start()
         self.interpreter_ui_delegate.attach_log(command)
-        self.heartbeat = GLib.timeout_add(1000, self._monitor_task, command)
-        return "STOP"
+
+        completed = self.running_loop.create_future()
+        self.heartbeat = GLib.timeout_add(1000, self._monitor_task, command, completed)
+        return completed
 
     def extract(self, data):
         """Extract a file, guessing the compression method."""
@@ -214,16 +219,19 @@ class CommandsMixin:
         alias = "INPUT_%s" % identifier if identifier else None
         options = data["options"]
         preselect = self._substitute(data.get("preselect", ""))
-        self.interpreter_ui_delegate.begin_input_menu(alias, options, preselect, self._on_input_menu_validated)
-        return "STOP"
 
-    def _on_input_menu_validated(self, alias, menu):
-        choosen_option = menu.get_active_id()
-        if choosen_option:
-            self.user_inputs.append({"alias": alias, "value": choosen_option})
-            self._iter_commands()
-        else:
-            raise RuntimeError("A required input option was not selected, so the installation can't continue.")
+        def _on_input_menu_validated(self, alias, menu):
+            chosen_option = menu.get_active_id()
+            if chosen_option:
+                self.user_inputs.append({"alias": alias, "value": chosen_option})
+                completed.set_result(None)
+            else:
+                completed.set_exception(
+                    RuntimeError("A required input option was not selected, so the installation can't continue."))
+
+        completed = self.running_loop.create_future()
+        self.interpreter_ui_delegate.begin_input_menu(alias, options, preselect, _on_input_menu_validated)
+        return completed
 
     def insert_disc(self, data):
         """Request user to insert an optical disc"""
@@ -239,25 +247,28 @@ class CommandsMixin:
               "containing the following file or folder:\n"
               "<i>%s</i>") % requires
         )
+
+        def _find_matching_disc(self, _widget, requires, extra_path=None):
+            if extra_path:
+                drives = [extra_path]
+            else:
+                drives = system.get_mounted_discs()
+            for drive in drives:
+                required_abspath = os.path.join(drive, requires)
+                required_abspath = system.fix_path_case(required_abspath)
+                if system.path_exists(required_abspath):
+                    logger.debug("Found %s on cdrom %s", requires, drive)
+                    self.game_disc = drive
+                    completed.set_result(None)
+                    return
+
+            completed.set_exception(
+                RuntimeError(_("The required file '%s' could not be located.") % requires))
+
+        completed = self.running_loop.create_future()
         self.interpreter_ui_delegate.begin_disc_prompt(message, requires, self.installer,
-                                                       self._find_matching_disc)
-        return "STOP"
-
-    def _find_matching_disc(self, _widget, requires, extra_path=None):
-        if extra_path:
-            drives = [extra_path]
-        else:
-            drives = system.get_mounted_discs()
-        for drive in drives:
-            required_abspath = os.path.join(drive, requires)
-            required_abspath = system.fix_path_case(required_abspath)
-            if system.path_exists(required_abspath):
-                logger.debug("Found %s on cdrom %s", requires, drive)
-                self.game_disc = drive
-                self._iter_commands()
-                return
-
-        raise RuntimeError(_("The required file '%s' could not be located.") % requires)
+                                                       _find_matching_disc)
+        return completed
 
     def mkdir(self, directory):
         """Create directory"""
@@ -432,17 +443,18 @@ class CommandsMixin:
         if isinstance(command, MonitoredCommand):
             # Monitor thread and continue when task has executed
             self.interpreter_ui_delegate.attach_log(command)
-            self.heartbeat = GLib.timeout_add(1000, self._monitor_task, command)
-            return "STOP"
+            completed = self.running_loop.create_future()
+            self.heartbeat = GLib.timeout_add(1000, self._monitor_task, command, completed)
+            return completed
         return None
 
-    def _monitor_task(self, command):
+    def _monitor_task(self, command, completed):
         if not command.is_running:
             logger.debug("Return code: %s", command.return_code)
             if command.return_code not in (str(command.accepted_return_code), "0"):
                 raise ScriptingError(_("Command exited with code %s") % command.return_code)
 
-            self._iter_commands()
+            completed.set_result(None)
             return False
         return True  # keep checking
 

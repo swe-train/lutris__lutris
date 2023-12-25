@@ -1,4 +1,5 @@
 """Window used for game installers"""
+import asyncio
 # pylint: disable=too-many-lines
 import os
 from gettext import gettext as _
@@ -346,15 +347,15 @@ class InstallerWindow(ModelessDialog,
         prompt the user to install it and quit this installer.
         """
         try:
-            def make_interpreter():
+            def make_interpreter(running_loop):
                 script = None
                 for _script in self.installers:
                     if _script["version"] == installer_version:
                         script = _script
 
-                return interpreter.ScriptInterpreter(script, self)
+                return interpreter.ScriptInterpreter(script, running_loop, self)
 
-            self.interpreter = await call_async(make_interpreter)
+            self.interpreter = await call_async(make_interpreter, asyncio.get_running_loop())
             self.interpreter.connect("runners-installed", self.on_runners_ready)
         except MissingGameDependency as ex:
             dlg = QuestionDialog(
