@@ -5,7 +5,8 @@ import time
 import requests
 
 from lutris import __version__
-from lutris.util import jobs
+from lutris.exception_backstops import async_execute
+from lutris.util.jobs import call_async
 from lutris.util.log import logger
 
 # `time.time` can skip ahead or even go backwards if the current
@@ -16,7 +17,6 @@ get_time = time.monotonic
 
 
 class Downloader:
-
     """Non-blocking downloader.
 
     Do start() then check_progress() at regular intervals.
@@ -38,8 +38,7 @@ class Downloader:
         self.cookies = cookies
         self.overwrite: bool = overwrite
         self.referer = referer
-        self.stop_request = None
-        self.thread = None
+        self.download_task = None
 
         # Read these after a check_progress()
         self.state = self.INIT
@@ -70,8 +69,7 @@ class Downloader:
         if self.overwrite and os.path.isfile(self.dest):
             os.remove(self.dest)
         self.file_pointer = open(self.dest, "wb")  # pylint: disable=consider-using-with
-        self.thread = jobs.AsyncCall(self.async_download, None)
-        self.stop_request = self.thread.stop_request
+        self.download_task = async_execute(call_async(self.async_download))
 
     def reset(self):
         """Reset the state of the downloader"""
@@ -124,8 +122,8 @@ class Downloader:
         """Request download stop and remove destination file."""
         logger.debug("❌ %s", self.url)
         self.state = self.CANCELLED
-        if self.stop_request:
-            self.stop_request.set()
+        if self.download_task:
+            self.download_task.cancel()
         if self.file_pointer:
             self.file_pointer.close()
             self.file_pointer = None
