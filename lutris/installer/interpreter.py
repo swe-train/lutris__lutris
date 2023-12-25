@@ -50,23 +50,23 @@ class ScriptInterpreter(GObject.Object, CommandsMixin):
         def attach_log(self, command):
             """Called to attach the command to a log UI, so its log output can be viewed."""
 
-        def begin_disc_prompt(self, message, installer, callback):
-            """Called to prompt for a disc. When the disc is provided, the callback is invoked.
-            The method returns immediately, however."""
+        async def show_disc_prompt_async(self, message, installer):
+            """Called to prompt for a disc, but not on the UI thread. When the disc is provided,
+            this method completes and returns the root directory of this disc, or None for auto-detect;
+            this can throw CancelledError if the user backs out."""
             raise NotImplementedError()
 
-        def begin_input_menu(self, options, preselect, callback):
-            """Called to prompt the user to select among a list of options. When the user
-            does so, the callback is invoked. The method returns immediately, however."""
+        async def show_input_menu_async(self, options, preselect):
+            """Called to prompt the user to select among a list of options, but not the UI
+            thread. Returns the users choice, or throws CancelledError."""
             raise NotImplementedError()
 
         def report_finished(self, game_id, status):
             """Called to report the successful completion of the installation."""
             logger.info("Installation of game %s completed.", game_id)
 
-    def __init__(self, installer, running_loop=None, interpreter_ui_delegate=None):
-        GObject.Object.__init__(self)
-        CommandsMixin.__init__(self, running_loop=running_loop or asyncio.get_running_loop())
+    def __init__(self, installer, interpreter_ui_delegate=None):
+        super().__init__()
         self.target_path = None
         self.interpreter_ui_delegate = interpreter_ui_delegate or ScriptInterpreter.InterpreterUIDelegate()
         self.service = self.interpreter_ui_delegate.service

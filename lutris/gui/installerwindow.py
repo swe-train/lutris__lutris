@@ -1,5 +1,4 @@
 """Window used for game installers"""
-import asyncio
 # pylint: disable=too-many-lines
 import os
 from gettext import gettext as _
@@ -21,7 +20,7 @@ from lutris.installer import InstallationKind, get_installers, interpreter
 from lutris.installer.errors import MissingGameDependency, ScriptingError
 from lutris.installer.interpreter import ScriptInterpreter
 from lutris.util import xdgshortcuts
-from lutris.util.jobs import call_async
+from lutris.util.jobs import call_async, get_main_loop, schedule_at_idle
 from lutris.util.log import logger
 from lutris.util.steam import shortcut as steam_shortcut
 from lutris.util.strings import gtk_safe, human_size
@@ -305,11 +304,31 @@ class InstallerWindow(ModelessDialog,
         command.set_log_buffer(self.log_buffer)
         GLib.idle_add(self.load_log_page)
 
-    def begin_disc_prompt(self, message, installer, callback):
-        GLib.idle_add(self.load_ask_for_disc_page, message, installer, callback, )
+    async def show_disc_prompt_async(self, message, installer):
+        def on_choice(_widget, disc_path=None):
+            if not completion.done():
+                completion.set_result(disc_path)
 
-    def begin_input_menu(self, options, preselect, callback):
-        GLib.idle_add(self.load_input_menu_page, options, preselect, callback)
+        def on_exit():
+            if not completion.done():
+                completion.set_cancelled()
+
+        completion = get_main_loop().create_future()
+        schedule_at_idle(self.load_ask_for_disc_page, message, installer, on_choice, on_exit)
+        return await completion
+
+    async def show_input_menu_async(self, options, preselect):
+        def on_choice(choice):
+            if not completion.done():
+                completion.set_result(choice)
+
+        def on_exit():
+            if not completion.done():
+                completion.set_cancelled()
+
+        completion = get_main_loop().create_future()
+        schedule_at_idle(self.load_input_menu_page, options, preselect, on_choice, on_exit)
+        return await completion
 
     def report_finished(self, game_id, status):
         GLib.idle_add(self.load_finish_install_page, game_id, status)
@@ -347,15 +366,15 @@ class InstallerWindow(ModelessDialog,
         prompt the user to install it and quit this installer.
         """
         try:
-            def make_interpreter(running_loop):
+            def make_interpreter():
                 script = None
                 for _script in self.installers:
                     if _script["version"] == installer_version:
                         script = _script
 
-                return interpreter.ScriptInterpreter(script, running_loop, self)
+                return interpreter.ScriptInterpreter(script, self)
 
-            self.interpreter = await call_async(make_interpreter, asyncio.get_running_loop())
+            self.interpreter = await call_async(make_interpreter)
             self.interpreter.connect("runners-installed", self.on_runners_ready)
         except MissingGameDependency as ex:
             dlg = QuestionDialog(
@@ -731,13 +750,13 @@ class InstallerWindow(ModelessDialog,
     # back into a callback when the user makes a choice. This is summoned
     # by the installer script as well.
 
-    def load_input_menu_page(self, options, preselect, callback):
+    def load_input_menu_page(self, options, preselect, choice_callback, exit_callback):
         def present_input_menu_page():
             """Display an input request as a dropdown menu with options."""
 
             def on_continue(_button):
                 try:
-                    callback(combobox.get_active_id())
+                    choice_callback(combobox.get_active_id())
                     self.stack.restore_current_page(previous_page)
                 except Exception as err:
                     # If the callback fails, the installation does not continue
@@ -764,8 +783,9 @@ class InstallerWindow(ModelessDialog,
             self.display_continue_button(on_continue)
             self.continue_button.grab_focus()
             self.on_input_menu_changed(combobox)
+            return exit_callback
 
-        # we must use jump_to_page() here since it would be unsave to return
+        # we must use jump_to_page() here since it would be unsafe to return
         # back to this page and re-execute the callback.
         previous_page = self.stack.save_current_page()
         self.stack.jump_to_page(present_input_menu_page)
@@ -779,13 +799,13 @@ class InstallerWindow(ModelessDialog,
     # This page asks the user for a disc; it also has a callback used when
     # the user selects a disc. Again, this is summoned by the installer script.
 
-    def load_ask_for_disc_page(self, message, installer, callback):
+    def load_ask_for_disc_page(self, message, installer, choice_clicked, exit_callback):
         def present_ask_for_disc_page():
             """Ask the user to do insert a CD-ROM."""
 
             def wrapped_callback(*args, **kwargs):
                 try:
-                    callback(*args, **kwargs)
+                    choice_clicked(*args, **kwargs)
                     self.stack.restore_current_page(previous_page)
                 except Exception as err:
                     # If the callback fails, the installation does not continue
@@ -819,6 +839,7 @@ class InstallerWindow(ModelessDialog,
 
             vbox.show_all()
             self.display_cancel_button()
+            return exit_callback
 
         previous_page = self.stack.save_current_page()
         self.stack.jump_to_page(present_ask_for_disc_page)

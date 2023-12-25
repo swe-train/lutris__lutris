@@ -43,6 +43,20 @@ class AsyncCall(threading.Thread):
         return self.source_id
 
 
+_main_loop = None
+
+
+def init_main_loop():
+    global _main_loop
+    _main_loop = asyncio.get_running_loop()
+
+
+def get_main_loop():
+    if not _main_loop:
+        raise RuntimeError("The main loop has not been started yet.")
+    return _main_loop
+
+
 async def call_async(func, *args, **kwargs):
     def on_complete(r, e):
         if e:
@@ -63,6 +77,24 @@ def synchronized_call(func, event, result):
 
 def schedule_at_idle(func, *args):
     return GLib.idle_add(_make_idle_safe(func), *args)
+
+
+async def execute_at_idle_async(func, *args, **kwargs):
+    """Runs a function at idle time; await this to obtain the
+    result or exception."""
+
+    def execute():
+        try:
+            result = func(*args, **kwargs)
+            future.set_result(result)
+        except Exception as ex:
+            future.set_exception(ex)
+
+        return False  # do not repeat
+
+    future = get_main_loop().create_future()
+    GLib.idle_add(execute)
+    return await future
 
 
 def _make_idle_safe(function):

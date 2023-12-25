@@ -5,6 +5,7 @@ import multiprocessing
 import os
 import shlex
 import shutil
+from asyncio import CancelledError
 from gettext import gettext as _
 from pathlib import Path
 
@@ -20,6 +21,7 @@ from lutris.runners import InvalidRunner, import_runner, import_task
 from lutris.runners.wine import wine
 from lutris.util import extract, linux, selective_merge, system
 from lutris.util.fileio import EvilConfigParser, MultiOrderedDict
+from lutris.util.jobs import get_main_loop
 from lutris.util.log import logger
 from lutris.util.wine.wine import WINE_DEFAULT_ARCH, get_default_wine_version, get_wine_path_for_version
 
@@ -30,8 +32,9 @@ class CommandsMixin:
     # pylint: disable=no-member
     installer: LutrisInstaller = NotImplemented
 
-    def __init__(self, running_loop):
-        self.running_loop = running_loop
+    @property
+    def running_loop(self):
+        return get_main_loop()
 
     def get_wine_path(self) -> str:
         """Return absolute path of wine version used during the installation, but
@@ -212,27 +215,21 @@ class CommandsMixin:
             self._killable_process(extract.extract_archive, filename, dest_path, merge_single, extractor)
         logger.debug("Extract done")
 
-    def input_menu(self, data):
+    async def input_menu(self, data):
         """Display an input request as a dropdown menu with options."""
         self._check_required_params("options", data, "input_menu")
         identifier = data.get("id")
         options = data["options"]
         preselect = self._substitute(data.get("preselect", ""))
 
-        def _on_input_menu_validated(self, chosen_option):
-            if chosen_option:
-                alias = "INPUT_%s" % identifier if identifier else None
-                self.user_inputs.append({"alias": alias, "value": chosen_option})
-                completed.set_result(None)
-            else:
-                completed.set_exception(
-                    RuntimeError("A required input option was not selected, so the installation can't continue."))
+        try:
+            chosen_option = await self.interpreter_ui_delegate.show_input_menu_async(self, options, preselect)
+            alias = "INPUT_%s" % identifier if identifier else None
+            self.user_inputs.append({"alias": alias, "value": chosen_option})
+        except CancelledError as ex:
+            raise RuntimeError("A required input option was not selected, so the installation can't continue.") from ex
 
-        completed = self.running_loop.create_future()
-        self.interpreter_ui_delegate.begin_input_menu(options, preselect, _on_input_menu_validated)
-        return completed
-
-    def insert_disc(self, data):
+    async def insert_disc(self, data):
         """Request user to insert an optical disc"""
         self._check_required_params("requires", data, "insert_disc")
         requires = data.get("requires")
@@ -247,9 +244,10 @@ class CommandsMixin:
               "<i>%s</i>") % requires
         )
 
-        def _find_matching_disc(self, _widget, extra_path=None):
-            if extra_path:
-                drives = [extra_path]
+        try:
+            disc_path = await self.interpreter_ui_delegate.show_disc_prompt_async(message, self.installer)
+            if disc_path:
+                drives = [disc_path]
             else:
                 drives = system.get_mounted_discs()
             for drive in drives:
@@ -258,16 +256,8 @@ class CommandsMixin:
                 if system.path_exists(required_abspath):
                     logger.debug("Found %s on cdrom %s", requires, drive)
                     self.game_disc = drive
-                    completed.set_result(None)
-                    return
-
-            completed.set_exception(
-                RuntimeError(_("The required file '%s' could not be located.") % requires))
-
-        completed = self.running_loop.create_future()
-        self.interpreter_ui_delegate.begin_disc_prompt(message, self.installer,
-                                                       _find_matching_disc)
-        return completed
+        except CancelledError as ex:
+            raise RuntimeError(_("The required file '%s' could not be located.") % requires) from ex
 
     def mkdir(self, directory):
         """Create directory"""

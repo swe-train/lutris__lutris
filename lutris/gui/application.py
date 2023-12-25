@@ -49,6 +49,7 @@ from lutris.migrations import migrate
 from lutris.startup import init_lutris, run_all_checks
 from lutris.style_manager import StyleManager
 from lutris.util import datapath, log, system
+from lutris.util.jobs import init_main_loop
 from lutris.util.http import HTTPError, Request
 from lutris.util.log import logger
 from lutris.util.steam.appmanifest import AppManifest, get_appmanifests
@@ -331,6 +332,8 @@ class Application(Gtk.Application):
         """Sets up the application on first start."""
         Gtk.Application.do_startup(self)
         signal.signal(signal.SIGINT, signal.SIG_DFL)
+
+        init_main_loop()
 
         action = Gio.SimpleAction.new("quit")
         action.connect("activate", lambda *x: self.quit())
