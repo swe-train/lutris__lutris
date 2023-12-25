@@ -12,7 +12,7 @@ from lutris.runtime import RuntimeUpdater
 from lutris.services.lutris import sync_media
 from lutris.settings import UPDATE_CHANNEL_STABLE, UPDATE_CHANNEL_UNSUPPORTED
 from lutris.util import system
-from lutris.util.jobs import AsyncCall
+from lutris.util.jobs import call_async
 from lutris.util.log import logger
 from lutris.util.strings import gtk_safe, time_ago
 
@@ -122,30 +122,30 @@ class UpdatesBox(BaseConfigBox):
         label.props.wrap = True
         return radio_button
 
-    def on_download_media_clicked(self, _widget):
-        self.update_media_box.show_running_markup(_("<i>Checking for missing media...</i>"))
-        AsyncCall(sync_media, self.on_media_updated)
+    async def on_download_media_clicked(self, _widget):
+        try:
+            self.update_media_box.show_running_markup(_("<i>Checking for missing media...</i>"))
+            update_counts = await call_async(sync_media)
 
-    def on_media_updated(self, result, error):
-        if error:
+            if not update_counts:
+                self.update_media_box.show_completion_markup("", _("Nothing to update"))
+            elif any(update_counts.values()):
+                update_text = _("Updated: ")
+                names = {
+                    "banners": _("banner"),
+                    "icons": _("icon"),
+                    "covers": _("cover"),
+                }
+                for key, value in update_counts.items():
+                    if value:
+                        if not update_text.endswith(": "):
+                            update_text += ", "
+                        update_text += f"{value} {names[key]}{'s' if value > 1 else ''}"
+                self.update_media_box.show_completion_markup("", update_text)
+            else:
+                self.update_media_box.show_completion_markup("", _("No new media found."))
+        except Exception as error:
             self.update_media_box.show_error(error)
-        elif not result:
-            self.update_media_box.show_completion_markup("", _("Nothing to update"))
-        elif any(result.values()):
-            update_text = _("Updated: ")
-            names = {
-                "banners": _("banner"),
-                "icons": _("icon"),
-                "covers": _("cover"),
-            }
-            for key, value in result.items():
-                if value:
-                    if not update_text.endswith(": "):
-                        update_text += ", "
-                    update_text += f"{value} {names[key]}{'s' if value > 1 else ''}"
-            self.update_media_box.show_completion_markup("", update_text)
-        else:
-            self.update_media_box.show_completion_markup("", _("No new media found."))
 
     def _get_main_window(self):
         application = Gio.Application.get_default()
