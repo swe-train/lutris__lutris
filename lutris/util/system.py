@@ -1,4 +1,5 @@
 """System utilities"""
+import asyncio
 import glob
 import hashlib
 import os
@@ -17,7 +18,7 @@ from gi.repository import Gio, GLib
 
 from lutris import settings
 from lutris.exceptions import MissingExecutableError
-from lutris.util.jobs import AsyncCall
+from lutris.util.jobs import call_async
 from lutris.util.log import logger
 from lutris.util.portals import TrashPortal
 
@@ -660,12 +661,12 @@ def load_vulkan_gpu_names(use_dri_prime):
         all_files = [":".join(fs) for fs in get_vk_icd_file_sets().values()]
         all_files.append("")
         for files in all_files:
-            AsyncCall(_load_vulkan_gpu_name, None, files, use_dri_prime, daemon=True)
+            asyncio.create_task(_load_vulkan_gpu_name_async(files, use_dri_prime))
     except Exception as ex:
         logger.exception("Failed to preload Vulkan GPU Names: %s", ex)
 
 
-def _load_vulkan_gpu_name(icd_files, use_dri_prime):
+async def _load_vulkan_gpu_name_async(icd_files, use_dri_prime):
     """Runs vulkaninfo to determine the default and DRI_PRIME gpu if available,
     returns 'Not Found' if the GPU is not found or 'Unknown GPU' if vulkaninfo
     is not available or an error occurs trying to use it."""
@@ -715,7 +716,7 @@ def _load_vulkan_gpu_name(icd_files, use_dri_prime):
             return _("Unknown GPU")
 
     key = icd_files, use_dri_prime
-    _vulkan_gpu_names[key] = get_name()
+    _vulkan_gpu_names[key] = await call_async(get_name)
 
 
 def get_vk_icd_file_sets():
