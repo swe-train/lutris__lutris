@@ -80,7 +80,6 @@ class ScriptInterpreter(GObject.Object, CommandsMixin):
         self.cancelled = False
         self.abort_current_task = None
         self.user_inputs = []
-        self.current_command = 0  # Current installer command when iterating through them
         self.current_resolution = DISPLAY_MANAGER.get_current_resolution()
         self.installer = LutrisInstaller(installer, self, service=self.service, appid=_appid)
 
@@ -305,50 +304,50 @@ class ScriptInterpreter(GObject.Object, CommandsMixin):
 
     async def _iter_commands_async(self):
         try:
-            while not self.cancelled:
-                commands = self.installer.script.get("installer", [])
-                if self.current_command < len(commands):
-                    try:
-                        command = commands[self.current_command]
-                    except KeyError as err:
-                        raise ScriptingError(_("Installer commands are not formatted correctly")) from err
-                    self.current_command += 1
-                    method, params = self._map_command(command)
-                    if isinstance(params, dict):
-                        status_text = params.pop("description", None)
-                    else:
-                        status_text = None
+            commands = self.installer.script.get("installer", [])
+
+            for command in commands:
+                if self.cancelled:
+                    return  # do not execute _finish_install_async()
+
+                logger.debug("Installer command: %s", command)
+
+                method, params = self._map_command(command)
+                if isinstance(params, dict):
+                    status_text = params.pop("description", None)
                     if status_text:
                         self.interpreter_ui_delegate.report_status(status_text)
-                    logger.debug("Installer command: %s", command)
 
-                    if self.target_path and os.path.exists(self.target_path):
-                        # Establish a CWD for the command, but remove it afterwards
-                        # for safety. We'd better not rely on this, many tasks can be
-                        # fiddling with the CWD at the same time.
-                        def dispatch():
-                            prev_cwd = os.getcwd()
-                            os.chdir(self.target_path)
-                            try:
-                                return method(params)
-                            finally:
-                                os.chdir(prev_cwd)
+                await self._dispatch_command_async(method, params)
 
-                        result = await call_async(dispatch)
-                    else:
-                        result = await call_async(method, params)
-
-                    if isfuture(result):
-                        await result
-                    elif iscoroutine(result):
-                        await asyncio.create_task(result)
-                else:
-                    logger.debug("Commands %d out of %s completed", self.current_command, len(commands))
-                    await self._finish_install_async()
-                    break
+            await self._finish_install_async()
         except Exception as ex:
             # Redirect errors to the delegate, instead of the default ErrorDialog.
             self.interpreter_ui_delegate.report_error(ex)
+
+    async def _dispatch_command_async(self, method, params) -> None:
+        if self.target_path and os.path.exists(self.target_path):
+            # Establish a CWD for the command, but remove it afterward
+            # for safety. We'd better not rely on this, many tasks can be
+            # fiddling with the CWD at the same time.
+            def dispatch():
+                prev_cwd = os.getcwd()
+                os.chdir(self.target_path)
+                try:
+                    return method(params)
+                finally:
+                    os.chdir(prev_cwd)
+
+            result = await call_async(dispatch)
+        else:
+            result = await call_async(method, params)
+
+        # 'method' itself can be async, or return a future; if so
+        # we will await that as well.
+        if isfuture(result):
+            await result
+        elif iscoroutine(result):
+            await asyncio.create_task(result)
 
     @staticmethod
     def _get_command_name_and_params(command_data):
