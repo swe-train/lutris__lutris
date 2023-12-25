@@ -6,9 +6,10 @@ from gettext import gettext as _
 from gi.repository import GLib, GObject
 
 from lutris.config import LutrisConfig
+from lutris.exception_backstops import async_execute
 from lutris.installer.errors import ScriptingError
 from lutris.runners import steam
-from lutris.util.jobs import AsyncCall
+from lutris.util.jobs import call_async
 from lutris.util.log import logger
 from lutris.util.steam.log import get_app_state_log
 
@@ -59,14 +60,6 @@ class SteamInstaller(GObject.Object):
             _steam_rel_path = "."
         return _steam_rel_path
 
-    @staticmethod
-    def on_steam_game_installed(_data, error):
-        """Callback for Steam game installer, mostly for error handling
-        since install progress is handled by _monitor_steam_game_install
-        """
-        if error:
-            raise ScriptingError(str(error))
-
     def install_steam_game(self):
         """Launch installation of a steam game"""
         if self.runner.get_game_path_from_appid(appid=self.appid):
@@ -75,10 +68,16 @@ class SteamInstaller(GObject.Object):
         else:
             logger.debug("Installing steam game %s", self.appid)
             self.runner.config = LutrisConfig(runner_slug=self.runner.name)
-            AsyncCall(self.runner.install_game, self.on_steam_game_installed, self.appid)
+            async_execute(call_async(self._install_game))
             self.install_start_time = time.localtime()
             self.steam_poll = GLib.timeout_add(2000, self._monitor_steam_game_install)
             self.stop_func = lambda: self.runner.remove_game_data(appid=self.appid)
+
+    def _install_game(self):
+        try:
+            self.runner.install_game(self.appid)
+        except Exception as ex:
+            raise ScriptingError(str(ex))
 
     def get_steam_data_path(self):
         """Return path of Steam files"""
