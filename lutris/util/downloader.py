@@ -98,16 +98,6 @@ class Downloader:
             self.get_stats()
         return self.progress_fraction
 
-    def check_progress_blocking(self):
-        """Append last downloaded chunk to dest file and store stats.
-        :return: progress (between 0.0 and 1.0)"""
-        blocker = threading.Event()
-        loop = get_main_loop()
-        future = loop.create_task(self.check_progress_async())
-        future.add_done_callback(lambda *x: blocker.set())
-        blocker.wait()
-        return future.result()
-
     async def check_progress_async(self):
         """Append last downloaded chunk to dest file and store stats.
         :return: progress (between 0.0 and 1.0)"""
@@ -118,20 +108,6 @@ class Downloader:
         if self.state not in [self.CANCELLED, self.ERROR]:
             self.get_stats()
         return self.progress_fraction
-
-    def join(self):
-        """Blocks waiting for the download to complete.
-
-        'progress_callback' is invoked repeatedly as the download
-        proceeds, if given, and is passed the downloader itself.
-
-        Returns True on success, False if cancelled."""
-        while self.state == self.DOWNLOADING:
-            self.check_progress_blocking()
-
-        if self.error:
-            raise self.error
-        return self.state == self.COMPLETED
 
     async def join_async(self):
         """Blocks waiting for the download to complete.

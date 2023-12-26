@@ -335,23 +335,14 @@ class RuntimeExtractedComponentUpdater(RuntimeComponentUpdater):
         return progress_info
 
     async def install_update_async(self, updater: RuntimeUpdater) -> None:
-        await call_async(self._install)
-
-    async def complete_update_async(self, updater: RuntimeUpdater) -> None:
-        await call_async(self._extract)
-
-    def _install(self):
-        """Finishes the installation after download, on a worker thread. This extracts
-        the archive and downloads the versions file for it, the marks the update complete
-        so join() above will be unblocked."""
         self.state = ComponentUpdater.DOWNLOADING
 
         self.downloader = Downloader(self.url, self.archive_path, overwrite=True)
         self.downloader.start()
-        self.downloader.join()
+        await self.downloader.join_async()
         self.downloader = None
 
-    def _extract(self) -> None:
+    async def complete_update_async(self, updater: RuntimeUpdater) -> None:
         path = self.archive_path
 
         stats = os.stat(path)
@@ -369,7 +360,7 @@ class RuntimeExtractedComponentUpdater(RuntimeComponentUpdater):
             system.delete_folder(dest_path)
         # Extract the runtime archive
         self.state = ComponentUpdater.EXTRACTING
-        archive_path, _destination_path = extract_archive(path, dest_path, merge_single=True)
+        archive_path, _destination_path = await call_async(extract_archive, path, dest_path, merge_single=True)
         os.unlink(archive_path)
 
         self.set_updated_at()
@@ -469,17 +460,14 @@ class RunnerComponentUpdater(ComponentUpdater):
         return True
 
     async def install_update_async(self, updater: RuntimeUpdater) -> None:
-        await call_async(self._download)
-
-    async def complete_update_async(self, updater: RuntimeUpdater) -> None:
-        await call_async(self._extract)
-
-    def _download(self):
         self.state = ComponentUpdater.DOWNLOADING
         self.downloader = Downloader(self.upstream_runner["url"], self.archive_path)
         self.downloader.start()
-        self.downloader.join()
+        await self.downloader.join_async()
         self.downloader = None
+
+    async def complete_update_async(self, updater: RuntimeUpdater) -> None:
+        await call_async(self._extract)
 
     def _extract(self):
         self.state = ComponentUpdater.EXTRACTING
