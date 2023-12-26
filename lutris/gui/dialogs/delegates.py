@@ -70,7 +70,7 @@ class InstallUIDelegate:
         """
         return None
 
-    def download_install_file(self, url, destination):
+    async def download_install_file_async(self, url, destination):
         """Downloads a file from a URL to a destination, overwriting any
         file at that path.
 
@@ -80,7 +80,8 @@ class InstallUIDelegate:
         """
         downloader = Downloader(url, destination, overwrite=True)
         downloader.start()
-        return downloader.join()
+        await downloader.join_async()
+        return True
 
 
 class CommandLineUIDelegate(LaunchUIDelegate):
@@ -124,9 +125,9 @@ class DialogInstallUIDelegate(InstallUIDelegate):
             dlg = dialogs.FileDialog(message)
             return dlg.filename
 
-    def download_install_file(self, url, destination):
+    async def download_install_file_async(self, url, destination):
         dialog = DownloadDialog(url, destination, parent=self)
-        dialog.run()
+        await dialog.run_async()
         return dialog.downloader.state == Downloader.COMPLETED
 
 

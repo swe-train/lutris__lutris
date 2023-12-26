@@ -6,6 +6,7 @@ from typing import Any, Callable, Iterable
 from gi.repository import Gio, GLib, GObject, Gtk
 
 from lutris.gui.dialogs import ErrorDialog
+from lutris.util.jobs import get_main_loop
 from lutris.util.log import logger
 
 
@@ -59,7 +60,7 @@ def async_execute(coroutine, error_objects: Iterable = None) -> Task:
                               handler_name=f"function '{coroutine.__name__}'",
                               error_objects=error_objects)
 
-    task = asyncio.create_task(coroutine)
+    task = get_main_loop().create_task(coroutine)
     task.add_done_callback(on_future_error)
     return task
 

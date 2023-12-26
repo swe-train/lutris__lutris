@@ -83,13 +83,13 @@ class atari800(Runner):
         },
     ]
 
-    async def install_runner_async(self, install_ui_delegate, version=None):
+    async def install_runner_async(self, install_ui_delegate, version=None) -> bool:
         if not await super().install_runner_async(install_ui_delegate, version):
             return False
 
         config_path = system.create_folder("~/.atari800")
         bios_archive = os.path.join(config_path, "atari800-bioses.zip")
-        install_ui_delegate.download_install_file(self.bios_url, bios_archive)
+        await install_ui_delegate.download_install_file_async(self.bios_url, bios_archive)
         if not system.path_exists(bios_archive):
             raise RuntimeError(_("Could not download Atari 800 BIOS archive"))
         extract.extract_archive(bios_archive, config_path)

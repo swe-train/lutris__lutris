@@ -10,6 +10,7 @@ from lutris.command import MonitoredCommand
 from lutris.config import LutrisConfig
 from lutris.database.games import get_game_by_field
 from lutris.exceptions import MisconfigurationError, MissingExecutableError, UnavailableLibrariesError
+from lutris.gui.dialogs.delegates import InstallUIDelegate
 from lutris.runners import RunnerInstallationError
 from lutris.util import flatpak, strings, system
 from lutris.util.extract import ExtractFailure, extract_archive
@@ -465,7 +466,7 @@ class Runner:  # pylint: disable=too-many-public-methods
         but this method allows the runner to apply its configuration."""
         return get_default_runner_version_info(self.name, version)
 
-    async def install_runner_async(self, install_ui_delegate, version=None):
+    async def install_runner_async(self, install_ui_delegate, version=None) -> bool:
         """Install runner using package management systems."""
         logger.debug(
             "Installing %s (version=%s)",
@@ -492,14 +493,15 @@ class Runner:  # pylint: disable=too-many-public-methods
         return await self.download_and_extract_async(runner_version_info["url"], **opts)
 
     async def download_and_extract_async(self, url, dest=None, **opts):
-        install_ui_delegate = opts["install_ui_delegate"]
+        install_ui_delegate = opts.get("install_ui_delegate", None) or InstallUIDelegate()
+        install_ui_delegate = InstallUIDelegate()
         merge_single = opts.get("merge_single", False)
         tarball_filename = os.path.basename(url)
         runner_archive = os.path.join(settings.CACHE_DIR, tarball_filename)
         if not dest:
             dest = settings.RUNNER_DIR
 
-        if not install_ui_delegate.download_install_file(url, runner_archive):
+        if not await install_ui_delegate.download_install_file_async(url, runner_archive):
             return False
 
         await call_async(self.extract, archive=runner_archive, dest=dest, merge_single=merge_single)

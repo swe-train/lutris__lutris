@@ -1,3 +1,4 @@
+import asyncio
 import os
 import threading
 import time
@@ -6,7 +7,7 @@ import requests
 
 from lutris import __version__
 from lutris.exception_backstops import async_execute
-from lutris.util.jobs import call_async
+from lutris.util.jobs import call_async, get_main_loop
 from lutris.util.log import logger
 
 # `time.time` can skip ahead or even go backwards if the current
@@ -56,7 +57,7 @@ class Downloader:
         self.speed_check_time = 0
         self.time_left_check_time = 0
         self.file_pointer = None
-        self.progress_event = threading.Event()
+        self.progress_event = asyncio.Event()
 
     def __repr__(self):
         return "downloader for %s" % self.url
@@ -89,20 +90,36 @@ class Downloader:
         self.time_left_check_time = 0
         self.file_pointer = None
 
-    def check_progress(self, blocking=False):
+    def check_progress(self):
         """Append last downloaded chunk to dest file and store stats.
-
-        blocking: if true and still downloading, block until some progress is made.
         :return: progress (between 0.0 and 1.0)"""
-        if blocking and self.state in [self.INIT, self.DOWNLOADING] and self.progress_fraction < 1.0:
-            self.progress_event.wait()
+
+        if self.state not in [self.CANCELLED, self.ERROR]:
+            self.get_stats()
+        return self.progress_fraction
+
+    def check_progress_blocking(self):
+        """Append last downloaded chunk to dest file and store stats.
+        :return: progress (between 0.0 and 1.0)"""
+        blocker = threading.Event()
+        loop = get_main_loop()
+        future = loop.create_task(self.check_progress_async())
+        future.add_done_callback(lambda *x: blocker.set())
+        blocker.wait()
+        return future.result()
+
+    async def check_progress_async(self):
+        """Append last downloaded chunk to dest file and store stats.
+        :return: progress (between 0.0 and 1.0)"""
+        if self.state in [self.INIT, self.DOWNLOADING] and self.progress_fraction < 1.0:
+            await self.progress_event.wait()
             self.progress_event.clear()
 
         if self.state not in [self.CANCELLED, self.ERROR]:
             self.get_stats()
         return self.progress_fraction
 
-    def join(self, progress_callback=None):
+    def join(self):
         """Blocks waiting for the download to complete.
 
         'progress_callback' is invoked repeatedly as the download
@@ -110,9 +127,21 @@ class Downloader:
 
         Returns True on success, False if cancelled."""
         while self.state == self.DOWNLOADING:
-            self.check_progress(blocking=True)
-            if progress_callback:
-                progress_callback(self)
+            self.check_progress_blocking()
+
+        if self.error:
+            raise self.error
+        return self.state == self.COMPLETED
+
+    async def join_async(self):
+        """Blocks waiting for the download to complete.
+
+        'progress_callback' is invoked repeatedly as the download
+        proceeds, if given, and is passed the downloader itself.
+
+        Returns True on success, False if cancelled."""
+        while self.state == self.DOWNLOADING:
+            await self.check_progress_async()
 
         if self.error:
             raise self.error

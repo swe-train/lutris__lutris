@@ -93,12 +93,11 @@ class RunnerBox(Gtk.Box):
         """Install a runner."""
         logger.debug("Install of %s requested", self.runner)
         window = self.get_toplevel()
-        await self.runner.install_runner_async(window)
-
-        if self.runner.is_installed():
-            self.emit("runner-installed")
-        else:
-            ErrorDialog("Runner failed to install", parent=self.get_toplevel())
+        if await self.runner.install_runner_async(window):
+            if self.runner.is_installed():
+                self.emit("runner-installed")
+            else:
+                ErrorDialog("Runner failed to install", parent=self.get_toplevel())
 
     def on_configure_clicked(self, widget):
         window = self.get_toplevel()

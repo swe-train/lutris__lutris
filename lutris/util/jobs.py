@@ -64,7 +64,7 @@ async def call_async(func, *args, **kwargs):
         elif not completed.cancelled():
             completed.set_result(r)
 
-    completed = asyncio.get_running_loop().create_future()
+    completed = get_main_loop().create_future()
     AsyncCall(func, on_complete, *args, **kwargs)
     return await completed
 

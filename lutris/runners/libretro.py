@@ -158,7 +158,7 @@ class libretro(Runner):
             raise UnspecifiedVersionError(_("The installer does not specify the libretro 'core' version."))
         return version
 
-    async def install_runner_async(self, install_ui_delegate, version=None):
+    async def install_runner_async(self, install_ui_delegate, version=None) -> bool:
         # install libretro core if it's missing
         if version and not super().is_installed():
             if not await super().install_runner_async(install_ui_delegate, version=None):

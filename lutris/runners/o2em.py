@@ -97,7 +97,7 @@ class o2em(Runner):
                     return self.platforms[i]
         return ""
 
-    async def install_runner_async(self, install_ui_delegate, version=None):
+    async def install_runner_async(self, install_ui_delegate, version=None) -> bool:
         if not await super().install_runner_async(install_ui_delegate, version):
             return False
 

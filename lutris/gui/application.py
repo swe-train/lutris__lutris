@@ -1075,8 +1075,8 @@ class Application(Gtk.Application):
         else:
             try:
                 runner = import_runner("wine")
-                await runner().install_runner_async(self.install_ui_delegate, version=version)
-                print(f"Wine version '{version}' has been installed.")
+                if await runner().install_runner_async(self.install_ui_delegate, version=version):
+                    print(f"Wine version '{version}' has been installed.")
             except (InvalidRunner, RunnerInstallationError) as ex:
                 print(ex.message)
 
@@ -1104,8 +1104,8 @@ Also, check that the version specified is in the correct format.
             if runner.is_installed():
                 print(f"'{runner_name}' is already installed.")
             else:
-                await runner.install_runner_async(self.install_ui_delegate)
-                print(f"'{runner_name}' has been installed")
+                if await runner.install_runner_async(self.install_ui_delegate):
+                    print(f"'{runner_name}' has been installed")
         except (InvalidRunner, RunnerInstallationError) as ex:
             print(ex.message)
 
